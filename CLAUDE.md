@@ -50,14 +50,16 @@ Everything market-related lives under `app/Market/` behind two interfaces, both 
 Eloquent model — distinct from the `Market\DTO\Candle` value object). `CandleRepository`
 reads DTOs oldest→newest and **lazy-syncs from the exchange when the store is empty**;
 that sync is wrapped so network failures degrade to stored data rather than breaking reads.
-Populate the store with `candles:sync` (live; scheduled every 5 min via the `scheduler`
-container) or `candles:import` (offline, from `storage/app/seed/SYMBOL__INTERVAL.json`).
+Populate the store with `candles:sync` (live; scheduled every 30s via the `scheduler`
+container, guarded by `withoutOverlapping`) or `candles:import` (offline, from
+`storage/app/seed/SYMBOL__INTERVAL.json`).
 
 **Dashboard.** `app/Filament/Pages/MarketDashboard.php` +
 `resources/views/filament/pages/market-dashboard.blade.php`. The Blade view is an Alpine
 component; it pulls all chart data and overlays from the server by calling the Livewire
 method `marketData(symbol, interval)` via `$wire.marketData(...)` — there is no JSON API
-route. `lightweight-charts` is loaded from a CDN `<script>` (not bundled). Overlay toggles
+route. `lightweight-charts` is self-hosted via a `<script>` from
+`public/vendor/lightweight-charts/` (not bundled, not a CDN). Overlay toggles
 (Уровни / Фигуры / ATR) re-apply price lines / line series client-side from that one payload.
 `marketData()` sanitises symbol/interval against config and wraps `ticker()` so a live-call
 failure never breaks the page.
