@@ -365,7 +365,9 @@ class PositionResource extends Resource
                         ->label('')
                         ->disk('public')
                         ->columnSpanFull()
-                        ->height(500),
+                        ->height(500)
+                        ->url(fn (Position $record): string => asset('storage/'.$record->chart_path))
+                        ->openUrlInNewTab(),
                 ]),
 
             Section::make('Контекст входа')

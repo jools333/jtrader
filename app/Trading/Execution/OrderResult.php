@@ -27,4 +27,17 @@ final class OrderResult
     {
         return new self(false, null, $raw, $error);
     }
+
+    /**
+     * Average fill price from the exchange response, or null if not present / zero.
+     * BingX swap v2 returns it at data.order.avgPrice; falls back to data.avgPrice.
+     */
+    public function filledPrice(): ?float
+    {
+        $price = (float) ($this->raw['data']['order']['avgPrice']
+            ?? $this->raw['data']['avgPrice']
+            ?? 0.0);
+
+        return $price > 0.0 ? $price : null;
+    }
 }

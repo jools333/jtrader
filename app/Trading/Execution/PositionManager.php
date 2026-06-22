@@ -114,7 +114,7 @@ final class PositionManager
             'signal_type' => $signal->type->value,
             'confluence' => $signal->confluence,
             'status' => Position::STATUS_OPEN,
-            'entry_price' => $signal->entryPrice,
+            'entry_price' => $order->filledPrice() ?? $signal->entryPrice,
             'stop_price' => $signal->stop,
             'target1' => $signal->target1,
             'target2' => $signal->target2,
@@ -140,11 +140,12 @@ final class PositionManager
      */
     public function applyExit(Position $position, ExitSignal $exit, float $price): Position
     {
-        $this->executor->closePosition($position->symbol, $position->direction(), $exit->closePercent);
+        $closeOrder = $this->executor->closePosition($position->symbol, $position->direction(), $exit->closePercent);
+        $filledAt = $closeOrder->filledPrice() ?? $price;
 
         $context = [
             'exit' => $exit->toArray(),
-            'price' => round($price, 8),
+            'price' => round($filledAt, 8),
         ];
 
         if ($exit->type === ExitType::Target1) {
@@ -164,8 +165,8 @@ final class PositionManager
             'status' => Position::STATUS_CLOSED,
             'exit_type' => $exit->type->value,
             'exit_reason' => $exit->reason?->value,
-            'exit_price' => $price,
-            'realized_pnl' => $this->pnl($position, $price),
+            'exit_price' => $filledAt,
+            'realized_pnl' => $this->pnl($position, $filledAt),
             'exit_context' => $context,
             'closed_at' => Carbon::now(),
         ]);

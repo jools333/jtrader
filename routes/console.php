@@ -10,3 +10,7 @@ Artisan::command('inspire', function () {
 
 // Candle data is now kept live by the `ws` container (candles:ws WebSocket stream).
 // candles:sync remains available for manual one-off pulls and as a fallback seed.
+
+Schedule::command('agent:scan')
+    ->everyThirtySeconds()
+    ->withoutOverlapping();

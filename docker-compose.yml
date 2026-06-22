@@ -123,6 +123,28 @@ services:
     networks:
       - jtrader
 
+  # ---- Laravel scheduler (runs schedule:work for agent:scan every 30s) ----
+  scheduler:
+    image: jtrader/app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan schedule:work
+    environment:
+      <<: *php-env
+    healthcheck:
+      disable: true
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - jtrader
+
   # ---- Vite dev server (front-end assets, HMR). Start with: --profile dev ----
   node:
     image: node:24-bookworm-slim
