@@ -184,22 +184,20 @@ final class PositionManager
     private function sizePosition(EntrySignal $signal): float
     {
         $riskPct = (float) ($this->config['risk_percent'] ?? 1.0);
-        $minQty  = (float) ($this->config['min_quantity'] ?? 0.001);
         $maxQty  = (float) ($this->config['max_quantity'] ?? 0.0);
 
         $riskPerUnit = abs($signal->entryPrice - $signal->stop);
 
         if ($riskPct <= 0.0 || $riskPerUnit <= 0.0) {
-            return $minQty;
+            return 0.0;
         }
 
         $balance = $this->executor->balance();
         if ($balance <= 0.0) {
-            return $minQty;
+            return 0.0;
         }
 
         $quantity = round(($balance * $riskPct / 100.0) / $riskPerUnit, 4);
-        $quantity = max($quantity, $minQty);
 
         if ($maxQty > 0.0) {
             $quantity = min($quantity, $maxQty);

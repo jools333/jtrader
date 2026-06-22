@@ -22,12 +22,11 @@ return [
     | risk_percent — % of available balance to risk per trade (e.g. 1.0 = 1%).
     |   Quantity = (balance × risk_percent / 100) / |entry − stop|
     | paper_balance — virtual balance used by the paper executor (USDT).
-    | min_quantity / max_quantity — hard clamps applied after the calculation.
-    |   max_quantity = 0 means no cap.
+    | max_quantity — hard cap after the calculation (0 = no cap).
+    |   Per-symbol minimum lot size is enforced by the exchange, not here.
     */
     'risk_percent'  => (float) env('TRADING_RISK_PCT', 1.0),
     'paper_balance' => (float) env('TRADING_PAPER_BALANCE', 1_000.0),
-    'min_quantity'  => (float) env('TRADING_MIN_QTY', 0.001),
     'max_quantity'  => (float) env('TRADING_MAX_QTY', 0.0),
 
     /*
