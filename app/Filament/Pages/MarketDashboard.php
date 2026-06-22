@@ -79,6 +79,7 @@ class MarketDashboard extends Page
         $exchange = app(ExchangeInterface::class);
 
         $candles = $repository->recent($symbol, $interval, (int) config('exchange.klines_limit', 500));
+        $htfInterval = $this->higherTimeframe($interval);
 
         return [
             'symbol' => $symbol,
@@ -87,6 +88,10 @@ class MarketDashboard extends Page
             'candles' => array_map(static fn (Candle $c) => $c->toChartArray(), $candles),
             'atr' => $analyzer->atr($symbol, $interval),
             'levels' => array_map(static fn (Level $l) => $l->toArray(), $analyzer->levels($symbol, $interval)),
+            'htf_interval' => $htfInterval,
+            'htf_levels' => $htfInterval
+                ? array_map(static fn (Level $l) => $l->toArray(), $analyzer->levels($symbol, $htfInterval))
+                : [],
             'trend' => $analyzer->trend($symbol, $interval)->toArray(),
             'patterns' => array_map(static fn (Pattern $p) => $p->toArray(), $analyzer->patterns($symbol, $interval)),
             'ticker' => $this->safeTicker($exchange, $symbol),
@@ -105,6 +110,17 @@ class MarketDashboard extends Page
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /** Returns the next higher timeframe key, or null if already at the highest. */
+    private function higherTimeframe(string $interval): ?string
+    {
+        $timeframes = array_keys((array) config('exchange.timeframes'));
+        $index = array_search($interval, $timeframes, true);
+
+        return ($index !== false && $index < count($timeframes) - 1)
+            ? $timeframes[$index + 1]
+            : null;
     }
 
     private function sanitiseSymbol(string $symbol): string

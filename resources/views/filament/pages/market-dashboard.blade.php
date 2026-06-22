@@ -43,6 +43,11 @@
                 :class="show.levels ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'">
                 Уровни
             </button>
+            <button type="button" @click="toggle('htfLevels')"
+                class="rounded-lg px-3 py-1.5 text-xs font-semibold transition"
+                :class="show.htfLevels ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'">
+                Уровни <span x-text="data.htf_interval ?? 'HTF'"></span>
+            </button>
             <button type="button" @click="toggle('patterns')"
                 class="rounded-lg px-3 py-1.5 text-xs font-semibold transition"
                 :class="show.patterns ? 'bg-violet-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'">
@@ -126,13 +131,13 @@
                 interval: cfg.interval,
                 pairs: cfg.pairs,
                 timeframes: cfg.timeframes,
-                show: { levels: false, patterns: false, atr: false },
+                show: { levels: false, htfLevels: false, patterns: false, atr: false },
                 loading: false,
                 data: {},
                 chart: null,
                 candleSeries: null,
                 volumeSeries: null,
-                overlay: { levelLines: [], atrLines: [], patternSeries: [] },
+                overlay: { levelLines: [], htfLevelLines: [], atrLines: [], patternSeries: [] },
                 refreshTimer: null,
 
                 error: null,
@@ -237,6 +242,7 @@
                         this.data = await this.$wire.marketData(this.symbol, this.interval);
                         this.renderSeries();
                         this.applyLevels();
+                        this.applyHtfLevels();
                         this.applyAtr();
                         this.applyPatterns();
                         this.chart.timeScale().fitContent();
@@ -253,6 +259,7 @@
                         this.data = await this.$wire.marketData(this.symbol, this.interval);
                         this.renderSeries();
                         this.applyLevels();
+                        this.applyHtfLevels();
                         this.applyAtr();
                         this.applyPatterns();
                     } catch (e) {
@@ -275,6 +282,7 @@
                 toggle(key) {
                     this.show[key] = !this.show[key];
                     if (key === 'levels') this.applyLevels();
+                    if (key === 'htfLevels') this.applyHtfLevels();
                     if (key === 'atr') this.applyAtr();
                     if (key === 'patterns') this.applyPatterns();
                 },
@@ -295,6 +303,22 @@
                             lineStyle: LightweightCharts.LineStyle.Dashed,
                             axisLabelVisible: true,
                             title: `${level.label} (${level.touches})`,
+                        }));
+                    });
+                },
+
+                applyHtfLevels() {
+                    this.clearPriceLines('htfLevelLines');
+                    if (!this.show.htfLevels) return;
+                    const htf = this.data.htf_interval ?? 'HTF';
+                    (this.data.htf_levels || []).forEach(level => {
+                        this.overlay.htfLevelLines.push(this.candleSeries.createPriceLine({
+                            price: level.price,
+                            color: level.color,
+                            lineWidth: 3,
+                            lineStyle: LightweightCharts.LineStyle.Solid,
+                            axisLabelVisible: true,
+                            title: `${level.label} ${htf} (${level.touches})`,
                         }));
                     });
                 },
