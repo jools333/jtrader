@@ -65,6 +65,13 @@ return [
             // BingX USDT-M perpetual ("swap") public market data is used.
             'market' => env('BINGX_MARKET', 'swap'),
             'timeout' => 15,
+
+            // Demo (paper) trading. BingX exposes a separate perpetual-futures
+            // demo environment that settles in virtual USDT (VST); orders are
+            // routed to its own host with demo API keys. Public market data is
+            // identical, so only order routing switches hosts.
+            'demo' => (bool) env('BINGX_DEMO', false),
+            'base_url_demo' => env('BINGX_BASE_URL_DEMO', 'https://open-api-vst.bingx.com'),
         ],
 
     ],

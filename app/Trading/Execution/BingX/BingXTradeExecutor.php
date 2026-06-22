@@ -34,7 +34,23 @@ final class BingXTradeExecutor implements TradeExecutorInterface
 
     public function name(): string
     {
-        return 'BingX';
+        return $this->isDemo() ? 'BingX (VST demo)' : 'BingX';
+    }
+
+    /** Whether orders route to the BingX demo (virtual USDT / VST) environment. */
+    private function isDemo(): bool
+    {
+        return (bool) ($this->config['demo'] ?? false);
+    }
+
+    /** Order-routing host — the VST demo host when demo mode is on. */
+    private function baseUrl(): string
+    {
+        $url = $this->isDemo()
+            ? ($this->config['base_url_demo'] ?? 'https://open-api-vst.bingx.com')
+            : ($this->config['base_url'] ?? '');
+
+        return rtrim((string) $url, '/');
     }
 
     public function openPosition(EntrySignal $signal, string $symbol, float $quantity): OrderResult
@@ -111,7 +127,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
 
         try {
             $response = $this->http
-                ->baseUrl(rtrim((string) $this->config['base_url'], '/'))
+                ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
                 ->asForm()

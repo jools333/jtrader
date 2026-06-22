@@ -67,11 +67,17 @@ failure never breaks the page.
 ## Environment quirk that will waste your time if unknown
 
 In this dev sandbox the network is asymmetric (this is environmental, not how production
-behaves):
+behaves). **It can also change between sessions — always test reachability empirically
+(`Http::get(...)` or `candles:sync` from inside the container) instead of assuming.**
 
-- **Containers have no internet except Docker Hub** — they cannot reach BingX/Packagist/GitHub.
-  So `composer` runs on the **host** (PHP 8.5) and the bind-mounted `vendor/` is used by the
-  container; live `candles:sync` does not work here (use the host-fetch → `candles:import` bridge).
+- **Containers DO have outbound internet** (re-verified 2026-06-22): from the `app` container,
+  BingX is reachable (`Http::get('https://open-api.bingx.com/...')` → 200) and `candles:sync`
+  pulls live candles, so the offline seed bridge is optional. (Earlier this was blocked except
+  Docker Hub; if it regresses, fall back to the host-fetch → `candles:import` bridge below.)
+- **`composer` still runs on the host** (PHP 8.5) and the bind-mounted `vendor/` is used by the
+  container (PHP 8.4) — this is about the toolchain/PHP version split, independent of network.
+- **Offline candle bridge (fallback if container egress is blocked):** fetch on the host into
+  `storage/app/seed/SYMBOL__INTERVAL.json`, then `candles:import` inside the container.
 - **Host → published container ports is broken** (MariaDB handshake errno 11; IPv6 on :8080).
   Verify HTTP from inside the network: `docker compose exec web wget -qO- http://localhost/...`.
 - `docker compose exec` and container→DB both work fine.
