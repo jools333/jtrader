@@ -125,7 +125,7 @@ final class TradingAgent implements TradingAgentInterface
      * wrap it in an {@see EntrySignal}. Stop sits beyond the level by a fraction
      * of ATR; targets are multiples of the resulting risk.
      */
-    private function plan(RuleContext $ctx, SignalType $type, Direction $dir, bool $confluence = false): ?EntrySignal
+    private function plan(RuleContext $ctx, SignalType $type, Direction $dir, bool $confluence = false, ?float $stopPrice = null): ?EntrySignal
     {
         $entry = $ctx->price();
         $stopBuffer = $ctx->atr * $this->cfg('stop_atr', 0.5);
@@ -133,7 +133,9 @@ final class TradingAgent implements TradingAgentInterface
         $t2Mult = $this->cfg('target2_r', 4.0);
 
         if ($dir === Direction::Long) {
-            $stop = $ctx->level - $stopBuffer;
+            // Use provided stop, or default level-based stop, whichever is lower.
+            $defaultStop = $ctx->level - $stopBuffer;
+            $stop = $stopPrice !== null ? min($defaultStop, $stopPrice) : $defaultStop;
             $risk = $entry - $stop;
             if ($risk <= 0.0) {
                 return null;
@@ -141,7 +143,9 @@ final class TradingAgent implements TradingAgentInterface
             $target1 = $entry + $risk * $t1Mult;
             $target2 = $entry + $risk * $t2Mult;
         } else {
-            $stop = $ctx->level + $stopBuffer;
+            // Use provided stop, or default level-based stop, whichever is higher.
+            $defaultStop = $ctx->level + $stopBuffer;
+            $stop = $stopPrice !== null ? max($defaultStop, $stopPrice) : $defaultStop;
             $risk = $stop - $entry;
             if ($risk <= 0.0) {
                 return null;
@@ -249,6 +253,7 @@ final class TradingAgent implements TradingAgentInterface
         $hist = $ctx->macd['histogram'];
 
         // SHORT — wick above resistance, close back below.
+        // Stop sits just above the wick high (natural invalidation: a close above the wick means the breakout was real).
         if ($penult->high > $ctx->level + $atr * 0.10
             && $penult->close < $ctx->level
             && ($penult->high - $ctx->level) > $atr * 0.15
@@ -256,10 +261,11 @@ final class TradingAgent implements TradingAgentInterface
             && ($ctx->ema8At($i) < $ctx->level || $ctx->ema8Falling())
             && ($hist[$i] < 0 || $hist[$i] < ($hist[$i - 1] ?? $hist[$i]))
         ) {
-            return $this->plan($ctx, SignalType::FalseBreakout, Direction::Short);
+            return $this->plan($ctx, SignalType::FalseBreakout, Direction::Short, false, $penult->high + $atr * 0.10);
         }
 
         // LONG — wick below support, close back above.
+        // Stop sits just below the wick low (natural invalidation: a close below the wick means support is broken for real).
         if ($penult->low < $ctx->level - $atr * 0.10
             && $penult->close > $ctx->level
             && ($ctx->level - $penult->low) > $atr * 0.15
@@ -267,7 +273,7 @@ final class TradingAgent implements TradingAgentInterface
             && ($ctx->ema8At($i) > $ctx->level || $ctx->ema8Rising())
             && ($hist[$i] > 0 || $hist[$i] > ($hist[$i - 1] ?? $hist[$i]))
         ) {
-            return $this->plan($ctx, SignalType::FalseBreakout, Direction::Long);
+            return $this->plan($ctx, SignalType::FalseBreakout, Direction::Long, false, $penult->low - $atr * 0.10);
         }
 
         return null;

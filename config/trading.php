@@ -30,7 +30,7 @@ return [
     'max_quantity'     => (float) env('TRADING_MAX_QTY', 0.0),
     // Hard cap: notional position value ≤ X% of balance (0 = disabled).
     // Prevents oversized positions when the stop is very tight relative to price.
-    'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 0.0),
+    'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 10.0),
 
     /*
     |--------------------------------------------------------------------------
@@ -41,7 +41,7 @@ return [
         'min_rr' => 2.0,          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
-        'stop_atr' => 0.5,        // stop sits ATR*0.5 beyond the level
+        'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
         'target1_r' => 2.0,       // target 1 at 2R
         'target2_r' => 4.0,       // target 2 at 4R
     ],
