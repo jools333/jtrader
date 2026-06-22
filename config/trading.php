@@ -25,9 +25,12 @@ return [
     | max_quantity — hard cap after the calculation (0 = no cap).
     |   Per-symbol minimum lot size is enforced by the exchange, not here.
     */
-    'risk_percent'  => (float) env('TRADING_RISK_PCT', 1.0),
-    'paper_balance' => (float) env('TRADING_PAPER_BALANCE', 1_000.0),
-    'max_quantity'  => (float) env('TRADING_MAX_QTY', 0.0),
+    'risk_percent'     => (float) env('TRADING_RISK_PCT', 1.0),
+    'paper_balance'    => (float) env('TRADING_PAPER_BALANCE', 1_000.0),
+    'max_quantity'     => (float) env('TRADING_MAX_QTY', 0.0),
+    // Hard cap: notional position value ≤ X% of balance (0 = disabled).
+    // Prevents oversized positions when the stop is very tight relative to price.
+    'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 0.0),
 
     /*
     |--------------------------------------------------------------------------

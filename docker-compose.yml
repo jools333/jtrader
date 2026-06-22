@@ -101,15 +101,14 @@ services:
     networks:
       - jtrader
 
-  # ---- Scheduler (runs Laravel scheduler -> periodic candle pulls) ----
-  scheduler:
+  # ---- BingX WebSocket listener (real-time candle streaming) ----
+  ws:
     image: jtrader/app
     restart: unless-stopped
     working_dir: /var/www/html
-    command: php artisan schedule:work
+    command: php artisan candles:ws
     environment:
       <<: *php-env
-    # Not an HTTP service — disable the image's php-fpm healthcheck.
     healthcheck:
       disable: true
     volumes:
@@ -119,6 +118,8 @@ services:
         condition: service_started
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - jtrader
 

@@ -60,6 +60,7 @@ return [
 
         'bingx' => [
             'base_url' => env('BINGX_BASE_URL', 'https://open-api.bingx.com'),
+            'ws_url'   => env('BINGX_WS_URL',   'wss://open-api-swap.bingx.com/swap-market'),
             'api_key' => env('BINGX_API_KEY', ''),
             'api_secret' => env('BINGX_API_SECRET', ''),
             // BingX USDT-M perpetual ("swap") public market data is used.

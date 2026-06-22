@@ -12,8 +12,8 @@ module is intended to consume `MarketAnalyzerInterface`.
 ## Running everything is Docker-based
 
 The app runs in containers (`docker-compose.yml`): `app` (PHP-FPM, `serversideup/php:8.4-fpm`),
-`web` (Nginx → http://localhost:8080), `db` (MariaDB), `redis`, `queue`, `scheduler`,
-and `node` (Vite, only under `--profile dev`).
+`web` (Nginx → http://localhost:8080), `db` (MariaDB), `redis`, `queue`, `ws` (WebSocket
+candle listener), and `node` (Vite, only under `--profile dev`).
 
 ```bash
 make build          # build the app image (passes host UID/GID for bind-mount perms)
@@ -50,9 +50,11 @@ Everything market-related lives under `app/Market/` behind two interfaces, both 
 Eloquent model — distinct from the `Market\DTO\Candle` value object). `CandleRepository`
 reads DTOs oldest→newest and **lazy-syncs from the exchange when the store is empty**;
 that sync is wrapped so network failures degrade to stored data rather than breaking reads.
-Populate the store with `candles:sync` (live; scheduled every 30s via the `scheduler`
-container, guarded by `withoutOverlapping`) or `candles:import` (offline, from
-`storage/app/seed/SYMBOL__INTERVAL.json`).
+Populate the store via the `ws` container (`candles:ws` command) which first seeds
+historical data via the REST API then streams live ticks over a persistent BingX WebSocket
+connection (`wss://open-api.bingx.com/market`), auto-reconnecting on failure.  `candles:sync`
+remains available for manual one-off pulls; `candles:import` covers the offline seed case
+(from `storage/app/seed/SYMBOL__INTERVAL.json`).
 
 **Dashboard.** `app/Filament/Pages/MarketDashboard.php` +
 `resources/views/filament/pages/market-dashboard.blade.php`. The Blade view is an Alpine

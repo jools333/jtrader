@@ -203,6 +203,12 @@ final class PositionManager
             $quantity = min($quantity, $maxQty);
         }
 
+        $maxPositionPct = (float) ($this->config['max_position_pct'] ?? 0.0);
+        if ($maxPositionPct > 0.0 && $signal->entryPrice > 0.0) {
+            $maxByNotional = round($balance * $maxPositionPct / 100.0 / $signal->entryPrice, 4);
+            $quantity = min($quantity, $maxByNotional);
+        }
+
         return $quantity;
     }
 
