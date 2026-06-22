@@ -14,6 +14,11 @@ ARG GID=1000
 USER root
 RUN docker-php-serversideup-set-id www-data ${UID}:${GID}
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-matplotlib \
+    && rm -rf /var/lib/apt/lists/*
+
 # Runtime tuning is done via env vars (see docker-compose.yml):
 #   PHP_OPCACHE_ENABLE, PHP_MEMORY_LIMIT, PHP_MAX_EXECUTION_TIME, ...
 
