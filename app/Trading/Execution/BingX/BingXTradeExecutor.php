@@ -73,23 +73,41 @@ final class BingXTradeExecutor implements TradeExecutorInterface
 
     public function closePosition(string $symbol, Direction $direction, int $percent): OrderResult
     {
-        // Reduce-only market order on the opposite side closes the position.
-        $side = $direction === Direction::Long ? 'SELL' : 'BUY';
-        $positionSide = $direction === Direction::Long ? 'LONG' : 'SHORT';
+        // BingX hedge mode: close via one-click flat (100%) or a plain market
+        // order on the opposite side (partial). reduceOnly is not allowed in
+        // hedge mode — positionSide alone identifies which leg to reduce.
+        if ($percent >= 100) {
+            return $this->send('/openApi/swap/v2/trade/closeAllPositions', [
+                'symbol' => $symbol,
+            ]);
+        }
 
-        return $this->send('/openApi/swap/v2/trade/closePosition', [
+        $positionSide = $direction === Direction::Long ? 'LONG' : 'SHORT';
+        $qty = $this->queryPositionQty($symbol, $positionSide);
+        if ($qty <= 0.0) {
+            return OrderResult::failure("No open {$positionSide} position found for {$symbol}.");
+        }
+
+        $closeQty = round($qty * $percent / 100.0, 4);
+        $side = $direction === Direction::Long ? 'SELL' : 'BUY';
+
+        return $this->send('/openApi/swap/v2/trade/order', [
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
-            'reduceOnly' => 'true',
-            'closePercent' => $percent,
+            'type' => 'MARKET',
+            'quantity' => $closeQty,
         ]);
     }
 
     public function moveStop(string $symbol, Direction $direction, float $newStop): OrderResult
     {
-        $side = $direction === Direction::Long ? 'SELL' : 'BUY';
         $positionSide = $direction === Direction::Long ? 'LONG' : 'SHORT';
+        $side = $direction === Direction::Long ? 'SELL' : 'BUY';
+
+        // Cancel any existing stop orders so the position ends up with exactly
+        // one stop at the new level rather than accumulating duplicates.
+        $this->cancelStopOrders($symbol, $positionSide);
 
         return $this->send('/openApi/swap/v2/trade/order', [
             'symbol' => $symbol,
@@ -97,7 +115,6 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             'positionSide' => $positionSide,
             'type' => 'STOP_MARKET',
             'stopPrice' => $newStop,
-            'reduceOnly' => 'true',
         ]);
     }
 
@@ -138,6 +155,108 @@ final class BingXTradeExecutor implements TradeExecutorInterface
     private function bracket(string $type, float $stopPrice): string
     {
         return json_encode(['type' => $type, 'stopPrice' => $stopPrice], JSON_THROW_ON_ERROR);
+    }
+
+    /** Current held quantity for a given positionSide; 0.0 if not found or error. */
+    private function queryPositionQty(string $symbol, string $positionSide): float
+    {
+        $key = (string) ($this->config['api_key'] ?? '');
+        $secret = (string) ($this->config['api_secret'] ?? '');
+
+        $params = ['symbol' => $symbol, 'timestamp' => (int) (microtime(true) * 1000)];
+        ksort($params);
+        $query = http_build_query($params);
+        $signature = hash_hmac('sha256', $query, $secret);
+
+        try {
+            $response = $this->http
+                ->baseUrl($this->baseUrl())
+                ->timeout((int) ($this->config['timeout'] ?? 15))
+                ->withHeaders(['X-BX-APIKEY' => $key])
+                ->get('/openApi/swap/v2/user/positions', $params + ['signature' => $signature]);
+
+            $payload = (array) $response->json();
+        } catch (Throwable) {
+            return 0.0;
+        }
+
+        if (($payload['code'] ?? -1) !== 0) {
+            return 0.0;
+        }
+
+        foreach ((array) ($payload['data'] ?? []) as $pos) {
+            if (($pos['positionSide'] ?? '') === $positionSide) {
+                return abs((float) ($pos['positionAmt'] ?? 0.0));
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Cancel all open STOP_MARKET orders on `symbol` for `positionSide`.
+     * Best-effort: failures are silently ignored so moveStop can still place
+     * the new order.
+     */
+    private function cancelStopOrders(string $symbol, string $positionSide): void
+    {
+        $key = (string) ($this->config['api_key'] ?? '');
+        $secret = (string) ($this->config['api_secret'] ?? '');
+        if ($key === '' || $secret === '') {
+            return;
+        }
+
+        $params = ['symbol' => $symbol, 'timestamp' => (int) (microtime(true) * 1000)];
+        ksort($params);
+        $query = http_build_query($params);
+        $signature = hash_hmac('sha256', $query, $secret);
+
+        try {
+            $response = $this->http
+                ->baseUrl($this->baseUrl())
+                ->timeout((int) ($this->config['timeout'] ?? 15))
+                ->withHeaders(['X-BX-APIKEY' => $key])
+                ->get('/openApi/swap/v2/trade/openOrders', $params + ['signature' => $signature]);
+
+            $payload = (array) $response->json();
+        } catch (Throwable) {
+            return;
+        }
+
+        if (($payload['code'] ?? -1) !== 0) {
+            return;
+        }
+
+        foreach ((array) ($payload['data']['orders'] ?? []) as $order) {
+            if (
+                ($order['positionSide'] ?? '') === $positionSide
+                && in_array($order['type'] ?? '', ['STOP_MARKET', 'STOP'], true)
+            ) {
+                $this->cancelOrder($symbol, (string) $order['orderId']);
+            }
+        }
+    }
+
+    /** Cancel a single order by ID; failures are silently swallowed. */
+    private function cancelOrder(string $symbol, string $orderId): void
+    {
+        $key = (string) ($this->config['api_key'] ?? '');
+        $secret = (string) ($this->config['api_secret'] ?? '');
+
+        $params = ['symbol' => $symbol, 'orderId' => $orderId, 'timestamp' => (int) (microtime(true) * 1000)];
+        ksort($params);
+        $query = http_build_query($params);
+        $signature = hash_hmac('sha256', $query, $secret);
+
+        try {
+            $this->http
+                ->baseUrl($this->baseUrl())
+                ->timeout((int) ($this->config['timeout'] ?? 15))
+                ->withHeaders(['X-BX-APIKEY' => $key])
+                ->delete('/openApi/swap/v2/trade/order?signature=' . $signature, $params);
+        } catch (Throwable) {
+            // best-effort
+        }
     }
 
     /**
