@@ -38,4 +38,22 @@ return [
         'target2_r' => 4.0,       // target 2 at 4R
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Position chart rendering
+    |--------------------------------------------------------------------------
+    | When enabled, each opened/closed position gets a PNG (candles, level,
+    | EMA8/21, entry/exit markers, volume) via scripts/render_position.py.
+    | Requires Python + matplotlib reachable at `python_bin`. In the container
+    | (no Python) leave this off and render specs on the host out-of-band; the
+    | spec JSON is always written regardless.
+    */
+    'chart' => [
+        'enabled' => (bool) env('TRADING_CHART', false),
+        'python_bin' => env('TRADING_CHART_PYTHON', 'python3'),
+        'script' => env('TRADING_CHART_SCRIPT', base_path('scripts/render_position.py')),
+        'window' => 60, // candles to plot
+        'timeout' => 60,
+    ],
+
 ];

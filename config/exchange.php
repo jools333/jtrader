@@ -26,6 +26,9 @@ return [
         'SOL-USDT',
         'BNB-USDT',
         'XRP-USDT',
+        'LINK-USDT',
+        'ADA-USDT',
+        'DOGE-USDT',
     ],
 
     /*

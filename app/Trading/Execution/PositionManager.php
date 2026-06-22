@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Trading\Execution;
 
 use App\Models\Position;
+use App\Trading\Charting\ChartRenderer;
 use App\Trading\Contracts\TradeExecutorInterface;
 use App\Trading\Contracts\TradingAgentInterface;
 use App\Trading\DTO\AgentResult;
@@ -31,6 +32,7 @@ final class PositionManager
         private readonly TradingAgentInterface $agent,
         private readonly TradeExecutorInterface $executor,
         private readonly array $config = [],
+        private readonly ?ChartRenderer $chart = null,
     ) {
     }
 
@@ -50,12 +52,33 @@ final class PositionManager
         $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent);
 
         if ($open !== null && $result->exitSignal !== null) {
-            $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
+            $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
+            $this->attachChart($position, $candles);
         } elseif ($open === null && $result->entrySignal !== null) {
-            $this->openFromSignal($symbol, $interval, $result->entrySignal, $result->indicators);
+            $entryOpenTime = $this->currentOpenTime($candles);
+            $position = $this->openFromSignal($symbol, $interval, $result->entrySignal, $result->indicators, $level, $entryOpenTime);
+            $this->attachChart($position, $candles);
         }
 
         return $result;
+    }
+
+    /**
+     * Best-effort: render the position chart and store its path. Never lets a
+     * charting failure interrupt trade management.
+     *
+     * @param array<int, \App\Market\DTO\Candle> $candles
+     */
+    private function attachChart(Position $position, array $candles): void
+    {
+        if ($this->chart === null) {
+            return;
+        }
+
+        $path = $this->chart->render($position, $candles);
+        if ($path !== null) {
+            $position->update(['chart_path' => $path]);
+        }
     }
 
     /** The currently open position for the pair/timeframe, if any. */
@@ -73,8 +96,14 @@ final class PositionManager
      * Open a position from an entry signal: route the order and log the record
      * with the indicator snapshot and signal parameters that triggered it.
      */
-    public function openFromSignal(string $symbol, string $interval, EntrySignal $signal, IndicatorSnapshot $indicators): Position
-    {
+    public function openFromSignal(
+        string $symbol,
+        string $interval,
+        EntrySignal $signal,
+        IndicatorSnapshot $indicators,
+        ?float $level = null,
+        ?int $entryOpenTime = null,
+    ): Position {
         $quantity = (float) ($this->config['default_quantity'] ?? 1.0);
         $order = $this->executor->openPosition($signal, $symbol, $quantity);
 
@@ -96,6 +125,8 @@ final class PositionManager
             'entry_context' => [
                 'signal' => $signal->toArray(),
                 'indicators' => $indicators->toArray(),
+                'level' => $level ?? $signal->entryPrice,
+                'entry_open_time' => $entryOpenTime,
                 'order' => ['ok' => $order->ok, 'error' => $order->error],
             ],
             'opened_at' => Carbon::now(),
@@ -191,5 +222,13 @@ final class PositionManager
         $last = end($candles);
 
         return $last ? $last->close : 0.0;
+    }
+
+    /** @param array<int, \App\Market\DTO\Candle> $candles */
+    private function currentOpenTime(array $candles): ?int
+    {
+        $last = end($candles);
+
+        return $last ? $last->openTime : null;
     }
 }

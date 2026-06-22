@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Trading\Agent\TradingAgent;
+use App\Trading\Charting\ChartRenderer;
 use App\Trading\Contracts\TradeExecutorInterface;
 use App\Trading\Contracts\TradingAgentInterface;
 use App\Trading\Execution\BingX\BingXTradeExecutor;
@@ -44,10 +45,15 @@ class TradingServiceProvider extends ServiceProvider
             };
         });
 
+        $this->app->singleton(ChartRenderer::class, fn (Application $app) => new ChartRenderer(
+            (array) config('trading.chart'),
+        ));
+
         $this->app->singleton(PositionManager::class, fn (Application $app) => new PositionManager(
             agent: $app->make(TradingAgentInterface::class),
             executor: $app->make(TradeExecutorInterface::class),
             config: (array) config('trading'),
+            chart: $app->make(ChartRenderer::class),
         ));
     }
 }
