@@ -50,6 +50,8 @@ class SyncCandles extends Command
 
         $this->info("Done. {$written} candles upserted.");
 
+        $this->call('agent:scan');
+
         return self::SUCCESS;
     }
 }

@@ -23,7 +23,7 @@ class AgentScan extends Command
 {
     protected $signature = 'agent:scan
         {--symbol= : Limit to a single symbol}
-        {--interval= : Limit to a single timeframe}';
+        {--interval=5m : Entry timeframe (levels are built on the next higher timeframe)}';
 
     protected $description = 'Evaluate the trading agent and act on entry/exit signals';
 
@@ -33,15 +33,13 @@ class AgentScan extends Command
         PositionManager $manager,
     ): int {
         $symbols = $this->option('symbol') ? [$this->option('symbol')] : (array) config('exchange.pairs');
-        $intervals = $this->option('interval') ? [$this->option('interval')] : array_keys((array) config('exchange.timeframes'));
+        $interval = (string) $this->option('interval');
 
         foreach ($symbols as $symbol) {
-            foreach ($intervals as $interval) {
-                try {
-                    $this->scan($candlesRepo, $analyzer, $manager, $symbol, $interval);
-                } catch (Throwable $e) {
-                    $this->line(sprintf('  <error>✗</error> %s %s — %s', $symbol, $interval, $e->getMessage()));
-                }
+            try {
+                $this->scan($candlesRepo, $analyzer, $manager, $symbol, $interval);
+            } catch (Throwable $e) {
+                $this->line(sprintf('  <error>✗</error> %s %s — %s', $symbol, $interval, $e->getMessage()));
             }
         }
 
@@ -62,10 +60,11 @@ class AgentScan extends Command
             return;
         }
 
+        $levelInterval = $this->higherTimeframe($interval);
         $atr = $analyzer->atr($symbol, $interval);
-        $level = $this->nearestLevel($analyzer->levels($symbol, $interval), $candles);
+        $level = $this->nearestLevel($analyzer->levels($symbol, $levelInterval), $candles);
         if ($level === null) {
-            $this->line(sprintf('  <comment>–</comment> %s %s — no levels', $symbol, $interval));
+            $this->line(sprintf('  <comment>–</comment> %s %s — no levels on %s', $symbol, $interval, $levelInterval));
 
             return;
         }
@@ -75,13 +74,29 @@ class AgentScan extends Command
         $entry = $result->entrySignal ? $result->entrySignal->type->value.' '.$result->entrySignal->direction->value : '—';
         $exit = $result->exitSignal ? $result->exitSignal->type->value : '—';
         $this->line(sprintf(
-            '  <info>✓</info> %s %s @ %.4f — entry: %s | exit: %s',
+            '  <info>✓</info> %s %s (levels: %s) @ %.4f — entry: %s | exit: %s',
             $symbol,
             $interval,
+            $levelInterval,
             $level,
             $entry,
             $exit,
         ));
+    }
+
+    /**
+     * Returns the next higher timeframe from config('exchange.timeframes').
+     * Falls back to the same interval if already at the top.
+     */
+    private function higherTimeframe(string $interval): string
+    {
+        $timeframes = array_keys((array) config('exchange.timeframes'));
+        $idx = array_search($interval, $timeframes, true);
+        if ($idx === false || $idx >= count($timeframes) - 1) {
+            return $interval;
+        }
+
+        return $timeframes[$idx + 1];
     }
 
     /**
