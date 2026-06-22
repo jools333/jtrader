@@ -112,6 +112,91 @@ final class SeriesMath
     }
 
     /**
+     * Exponential Moving Average series, seeded with the first value
+     * (EMA[0] = values[0]); same length as the input.
+     *
+     *   k = 2 / (period + 1);  EMA[i] = value[i]*k + EMA[i-1]*(1-k)
+     *
+     * @param array<int, float> $values
+     * @return array<int, float>
+     */
+    public static function ema(array $values, int $period): array
+    {
+        $values = array_values($values);
+        $n = count($values);
+        if ($n === 0 || $period < 1) {
+            return [];
+        }
+
+        $k = 2 / ($period + 1);
+        $ema = [$values[0]];
+        for ($i = 1; $i < $n; $i++) {
+            $ema[$i] = $values[$i] * $k + $ema[$i - 1] * (1 - $k);
+        }
+
+        return $ema;
+    }
+
+    /**
+     * MACD(fast, slow, signal) computed on a series of closes.
+     *
+     *   macd_line   = EMA(fast) - EMA(slow)
+     *   signal_line = EMA(signal) of macd_line
+     *   histogram   = macd_line - signal_line
+     *
+     * Returns the three full series (same length as input) so callers can
+     * inspect slope/divergence, not just the latest value.
+     *
+     * @param array<int, float> $closes
+     * @return array{line: array<int, float>, signal: array<int, float>, histogram: array<int, float>}
+     */
+    public static function macd(array $closes, int $fast = 12, int $slow = 26, int $signal = 9): array
+    {
+        $closes = array_values($closes);
+        $n = count($closes);
+        if ($n === 0) {
+            return ['line' => [], 'signal' => [], 'histogram' => []];
+        }
+
+        $emaFast = self::ema($closes, $fast);
+        $emaSlow = self::ema($closes, $slow);
+
+        $line = [];
+        for ($i = 0; $i < $n; $i++) {
+            $line[$i] = $emaFast[$i] - $emaSlow[$i];
+        }
+
+        $signalLine = self::ema($line, $signal);
+
+        $histogram = [];
+        for ($i = 0; $i < $n; $i++) {
+            $histogram[$i] = $line[$i] - $signalLine[$i];
+        }
+
+        return ['line' => $line, 'signal' => $signalLine, 'histogram' => $histogram];
+    }
+
+    /**
+     * Simple-moving-average ATR (last value), as specified by the trading
+     * agent: ATR = SMA(TrueRange, period). Distinct from {@see atr()} which
+     * uses Wilder smoothing.
+     *
+     * @param array<int, Candle> $candles
+     */
+    public static function atrSma(array $candles, int $period = 14): float
+    {
+        $tr = self::trueRanges($candles);
+        $n = count($tr);
+        if ($n === 0 || $period < 1) {
+            return 0.0;
+        }
+
+        $slice = array_slice($tr, -min($period, $n));
+
+        return array_sum($slice) / count($slice);
+    }
+
+    /**
      * Wilder ADX with final +DI / -DI.
      *
      * @param array<int, Candle> $candles
