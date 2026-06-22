@@ -373,7 +373,10 @@ class PositionResource extends Resource
                 ->schema([
                     KeyValueEntry::make('entry_context')
                         ->label('')
-                        ->columnSpanFull(),
+                        ->columnSpanFull()
+                        ->getStateUsing(fn (Position $record): array => collect($record->entry_context ?? [])
+                            ->map(fn ($v) => is_array($v) ? json_encode($v) : (string) $v)
+                            ->all()),
                 ]),
 
             Section::make('Контекст выхода')
@@ -382,7 +385,10 @@ class PositionResource extends Resource
                 ->schema([
                     KeyValueEntry::make('exit_context')
                         ->label('')
-                        ->columnSpanFull(),
+                        ->columnSpanFull()
+                        ->getStateUsing(fn (Position $record): array => collect($record->exit_context ?? [])
+                            ->map(fn ($v) => is_array($v) ? json_encode($v) : (string) $v)
+                            ->all()),
                 ]),
         ]);
     }

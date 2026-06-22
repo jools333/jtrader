@@ -104,7 +104,7 @@ final class PositionManager
         ?float $level = null,
         ?int $entryOpenTime = null,
     ): Position {
-        $quantity = (float) ($this->config['default_quantity'] ?? 1.0);
+        $quantity = $this->sizePosition($signal);
         $order = $this->executor->openPosition($signal, $symbol, $quantity);
 
         return Position::create([
@@ -171,6 +171,41 @@ final class PositionManager
         ]);
 
         return $position;
+    }
+
+    /**
+     * Calculate position quantity from risk percent of available balance.
+     *
+     * quantity = (balance × risk_pct / 100) / risk_per_unit
+     *
+     * Falls back to min_quantity when the calculation is degenerate (zero stop
+     * distance, zero balance, or risk_percent disabled).
+     */
+    private function sizePosition(EntrySignal $signal): float
+    {
+        $riskPct = (float) ($this->config['risk_percent'] ?? 1.0);
+        $minQty  = (float) ($this->config['min_quantity'] ?? 0.001);
+        $maxQty  = (float) ($this->config['max_quantity'] ?? 0.0);
+
+        $riskPerUnit = abs($signal->entryPrice - $signal->stop);
+
+        if ($riskPct <= 0.0 || $riskPerUnit <= 0.0) {
+            return $minQty;
+        }
+
+        $balance = $this->executor->balance();
+        if ($balance <= 0.0) {
+            return $minQty;
+        }
+
+        $quantity = round(($balance * $riskPct / 100.0) / $riskPerUnit, 4);
+        $quantity = max($quantity, $minQty);
+
+        if ($maxQty > 0.0) {
+            $quantity = min($quantity, $maxQty);
+        }
+
+        return $quantity;
     }
 
     /** Realised PnL of the remaining size at `price`. */

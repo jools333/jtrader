@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-matplotlib \
         libicu-dev \
     && docker-php-ext-install intl \
-    && apt-get purge -y --auto-remove libicu-dev \
+    && apt-get purge -y libicu-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Runtime tuning is done via env vars (see docker-compose.yml):

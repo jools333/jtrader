@@ -17,8 +17,10 @@ use Psr\Log\LoggerInterface;
  */
 final class PaperTradeExecutor implements TradeExecutorInterface
 {
-    public function __construct(private readonly LoggerInterface $log)
-    {
+    public function __construct(
+        private readonly LoggerInterface $log,
+        private readonly float $balance = 1_000.0,
+    ) {
     }
 
     public function name(): string
@@ -49,5 +51,10 @@ final class PaperTradeExecutor implements TradeExecutorInterface
         $this->log->info('[paper] move stop', compact('symbol', 'newStop') + ['direction' => $direction->value]);
 
         return OrderResult::success();
+    }
+
+    public function balance(): float
+    {
+        return $this->balance;
     }
 }

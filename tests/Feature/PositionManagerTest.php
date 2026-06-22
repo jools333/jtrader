@@ -46,12 +46,15 @@ class PositionManagerTest extends TestCase
         return $candles;
     }
 
-    private function manager(): PositionManager
+    private function manager(float $paperBalance = 1_000.0, float $riskPct = 1.0): PositionManager
     {
         return new PositionManager(
             agent: new TradingAgent((array) config('trading.agent')),
-            executor: new PaperTradeExecutor(Log::getLogger()),
-            config: (array) config('trading'),
+            executor: new PaperTradeExecutor(Log::getLogger(), $paperBalance),
+            config: array_merge((array) config('trading'), [
+                'risk_percent' => $riskPct,
+                'paper_balance' => $paperBalance,
+            ]),
         );
     }
 
@@ -69,6 +72,27 @@ class PositionManagerTest extends TestCase
         // Entry rationale (signal + indicators) is persisted for audit.
         $this->assertArrayHasKey('signal', $position->entry_context);
         $this->assertArrayHasKey('indicators', $position->entry_context);
+    }
+
+    public function test_quantity_is_calculated_from_risk_percent(): void
+    {
+        // ATR=10, stop_atr=0.5 → stop buffer = 5.
+        // Level=100 (resistance), SHORT: stop = 100 + 5 = 105, entry ≈ 98.2.
+        // risk_per_unit ≈ 105 - 98.2 = 6.8.
+        // balance=1000, risk_pct=1% → risk_amount = 10 USDT.
+        // expected qty = 10 / 6.8 ≈ 1.4706, rounded to 4dp.
+        $result = $this->manager(paperBalance: 1_000.0, riskPct: 1.0)
+            ->process('BTC-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+
+        $this->assertNotNull($result->entrySignal);
+        $position = Position::first();
+        $this->assertNotNull($position);
+
+        $signal = $result->entrySignal;
+        $riskPerUnit = abs($signal->entryPrice - $signal->stop);
+        $expected = round((1_000.0 * 1.0 / 100.0) / $riskPerUnit, 4);
+
+        $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
     }
 
     public function test_open_position_is_closed_on_stop_loss(): void

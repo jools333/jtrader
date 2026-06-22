@@ -101,6 +101,39 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         ]);
     }
 
+    public function balance(): float
+    {
+        $key = (string) ($this->config['api_key'] ?? '');
+        $secret = (string) ($this->config['api_secret'] ?? '');
+        if ($key === '' || $secret === '') {
+            return 0.0;
+        }
+
+        $params = ['timestamp' => (int) (microtime(true) * 1000)];
+        $query = http_build_query($params);
+        $signature = hash_hmac('sha256', $query, $secret);
+
+        try {
+            $response = $this->http
+                ->baseUrl($this->baseUrl())
+                ->timeout((int) ($this->config['timeout'] ?? 15))
+                ->withHeaders(['X-BX-APIKEY' => $key])
+                ->get('/openApi/swap/v2/user/balance', $params + ['signature' => $signature]);
+
+            $payload = (array) $response->json();
+        } catch (Throwable) {
+            return 0.0;
+        }
+
+        if (($payload['code'] ?? -1) !== 0) {
+            return 0.0;
+        }
+
+        $b = (array) ($payload['data']['balance'] ?? []);
+
+        return (float) ($b['availableMargin'] ?? $b['equity'] ?? 0.0);
+    }
+
     /** @return string JSON for a BingX bracket (TP/SL) sub-order. */
     private function bracket(string $type, float $stopPrice): string
     {

@@ -35,4 +35,10 @@ interface TradeExecutorInterface
      * Relocate the protective stop (e.g. to break-even after a partial exit).
      */
     public function moveStop(string $symbol, Direction $direction, float $newStop): OrderResult;
+
+    /**
+     * Available balance (in quote currency, e.g. USDT) that can be risked.
+     * Paper executors return a configured constant; live executors query the venue.
+     */
+    public function balance(): float;
 }

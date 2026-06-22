@@ -36,7 +36,10 @@ class TradingServiceProvider extends ServiceProvider
             $driver = (string) config('trading.executor', 'paper');
 
             return match ($driver) {
-                'paper' => new PaperTradeExecutor($app->make(LoggerInterface::class)),
+                'paper' => new PaperTradeExecutor(
+                    log: $app->make(LoggerInterface::class),
+                    balance: (float) config('trading.paper_balance', 1_000.0),
+                ),
                 'bingx' => new BingXTradeExecutor(
                     http: $app->make(HttpFactory::class),
                     config: (array) config('exchange.drivers.bingx'),
