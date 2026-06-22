@@ -13,6 +13,7 @@ use App\Trading\Enums\ExitType;
 use App\Trading\Enums\SignalType;
 use BackedEnum;
 use Filament\Infolists\Components\IconEntry;
+use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
@@ -355,6 +356,16 @@ class PositionResource extends Resource
                         }),
                     TextEntry::make('exit_order_id')->label('Order ID (выход)')->placeholder('—')->copyable(),
                     TextEntry::make('closed_at')->label('Закрыта')->dateTime('d.m.Y H:i:s')->placeholder('—'),
+                ]),
+
+            Section::make('График')
+                ->visible(fn (Position $record): bool => $record->chart_path !== null)
+                ->schema([
+                    ImageEntry::make('chart_path')
+                        ->label('')
+                        ->disk('public')
+                        ->columnSpanFull()
+                        ->height(500),
                 ]),
 
             Section::make('Контекст входа')

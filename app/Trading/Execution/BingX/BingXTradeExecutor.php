@@ -131,7 +131,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
                 ->asForm()
-                ->post($path.'?'.$query.'&signature='.$signature);
+                ->post($path.'?signature='.$signature, $params);
 
             $payload = (array) $response->json();
         } catch (Throwable $e) {

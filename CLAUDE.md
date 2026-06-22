@@ -82,6 +82,6 @@ behaves). **It can also change between sessions — always test reachability emp
   Verify HTTP from inside the network: `docker compose exec web wget -qO- http://localhost/...`.
 - `docker compose exec` and container→DB both work fine.
 
-The image lacks `intl/gd/bcmath` and cannot compile extensions (no apt mirror). This is fine —
-no installed package hard-requires them (`vendor/composer/platform_check.php` only gates PHP
-version). Do not write code paths that depend on `ext-intl` (e.g. Laravel's `Number` helper).
+The image has `python3`, `python3-matplotlib`, and `ext-intl` installed (see `docker/php/Dockerfile`).
+`gd` and `bcmath` are absent but not required. `ext-intl` is needed by Laravel's `Number` helper
+and Filament pagination — it is compiled in the Dockerfile via `docker-php-ext-install intl`.

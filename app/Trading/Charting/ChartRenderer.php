@@ -53,7 +53,7 @@ final class ChartRenderer
 
         $specPath = storage_path("app/charts/specs/position_{$position->id}.json");
         $relative = "charts/position_{$position->id}.png";
-        $outPath = storage_path("app/{$relative}");
+        $outPath = storage_path("app/public/{$relative}");
 
         File::ensureDirectoryExists(dirname($specPath));
         File::ensureDirectoryExists(dirname($outPath));

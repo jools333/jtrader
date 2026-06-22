@@ -2,9 +2,7 @@
 #
 # Base: serversideup/php — a Laravel-focused, production-ready PHP image that
 # already bundles the extensions we need (pdo_mysql, mbstring, redis, zip,
-# opcache, openssl, tokenizer, xml, curl ...) plus Composer. We use it because
-# the build network has no access to Debian apt mirrors, so compiling
-# extensions from source is not possible here.
+# opcache, openssl, tokenizer, xml, curl ...) plus Composer.
 FROM serversideup/php:8.4-fpm
 
 # Match the container user to the host UID/GID for clean bind-mount permissions.
@@ -17,6 +15,9 @@ RUN docker-php-serversideup-set-id www-data ${UID}:${GID}
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
         python3-matplotlib \
+        libicu-dev \
+    && docker-php-ext-install intl \
+    && apt-get purge -y --auto-remove libicu-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Runtime tuning is done via env vars (see docker-compose.yml):

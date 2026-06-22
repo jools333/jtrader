@@ -53,7 +53,7 @@ class RenderPositionChart extends Command
         }
 
         $position->update(['chart_path' => $path]);
-        $this->info("Chart saved: storage/app/{$path}");
+        $this->info("Chart saved: storage/app/public/{$path}");
 
         return self::SUCCESS;
     }
