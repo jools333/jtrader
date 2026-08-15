@@ -19,9 +19,8 @@ jobs:
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          script_stop: true
+          # Отключаем POSIX exit code checker от appleboy (чтобы он не слал POSIX $? в fish)
+          script_stop: false
           command_timeout: 25m
-          envs: WEB_SHELL
-          # Явно заставляем выполнять скрипт через bash
           script: |
-            bash -c "/home/jools/scripts/deploy.sh main"
+            exec bash -l -c "/home/jools/scripts/deploy.sh main"
