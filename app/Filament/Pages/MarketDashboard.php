@@ -82,8 +82,9 @@ class MarketDashboard extends Page
         $htfInterval = $this->higherTimeframe($interval);
         $atr = $analyzer->atr($symbol, $interval);
 
-        $lastClose = count($candles) > 0 ? end($candles)->close : null;
-        $atrPercent = ($atr > 0 && $lastClose > 0) ? round(($atr / $lastClose) * 100, 3) : 0.0;
+        $lastCandle = count($candles) > 0 ? end($candles) : null;
+        $currentRange = $lastCandle ? ($lastCandle->high - $lastCandle->low) : 0.0;
+        $atrPercent = ($atr > 0) ? round(($currentRange / $atr) * 100, 1) : 0.0;
 
         return [
             'symbol' => $symbol,
