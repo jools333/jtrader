@@ -225,6 +225,50 @@
                         upColor: '#26a69a', downColor: '#ef5350',
                         borderUpColor: '#26a69a', borderDownColor: '#ef5350',
                         wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+                        autoscaleInfoProvider: () => {
+                            if (!this.candleSeries) return null;
+                            // Grab default autoscale price range from candles data
+                            const data = this.data.candles || [];
+                            if (data.length === 0) return null;
+                            
+                            let min = Infinity;
+                            let max = -Infinity;
+                            
+                            // We only calculate range for the visible or loaded candles
+                            data.forEach(c => {
+                                if (c.low < min) min = c.low;
+                                if (c.high > max) max = c.high;
+                            });
+
+                            // Adjust min/max if overlays are active
+                            if (this.show.levels && this.data.levels) {
+                                this.data.levels.forEach(lvl => {
+                                    if (lvl.price < min) min = lvl.price;
+                                    if (lvl.price > max) max = lvl.price;
+                                });
+                            }
+                            if (this.show.htfLevels && this.data.htf_levels) {
+                                this.data.htf_levels.forEach(lvl => {
+                                    if (lvl.price < min) min = lvl.price;
+                                    if (lvl.price > max) max = lvl.price;
+                                });
+                            }
+                            if (this.show.atr && this.data.atr) {
+                                const last = data[data.length - 1].close;
+                                const atr = this.data.atr;
+                                const p1 = last + atr;
+                                const p2 = last - atr;
+                                if (p1 > max) max = p1;
+                                if (p2 < min) min = p2;
+                            }
+
+                            return {
+                                priceRange: {
+                                    minValue: min,
+                                    maxValue: max,
+                                },
+                            };
+                        }
                     });
 
                     this.volumeSeries = this.chart.addHistogramSeries({
@@ -294,49 +338,62 @@
 
                 applyLevels() {
                     this.clearPriceLines('levelLines');
-                    if (!this.show.levels) return;
-                    (this.data.levels || []).forEach(level => {
-                        this.overlay.levelLines.push(this.candleSeries.createPriceLine({
-                            price: level.price,
-                            color: level.color,
-                            lineWidth: 2,
-                            lineStyle: LightweightCharts.LineStyle.Dashed,
-                            axisLabelVisible: true,
-                            title: `${level.label} (${level.touches})`,
-                        }));
-                    });
+                    if (this.show.levels) {
+                        (this.data.levels || []).forEach(level => {
+                            this.overlay.levelLines.push(this.candleSeries.createPriceLine({
+                                price: level.price,
+                                color: level.color,
+                                lineWidth: 2,
+                                lineStyle: LightweightCharts.LineStyle.Dashed,
+                                axisLabelVisible: true,
+                                title: `${level.label} (${level.touches})`,
+                            }));
+                        });
+                    }
+                    if (this.candleSeries) {
+                        this.candleSeries.applyOptions({});
+                    }
                 },
 
                 applyHtfLevels() {
                     this.clearPriceLines('htfLevelLines');
-                    if (!this.show.htfLevels) return;
-                    const htf = this.data.htf_interval ?? 'HTF';
-                    (this.data.htf_levels || []).forEach(level => {
-                        this.overlay.htfLevelLines.push(this.candleSeries.createPriceLine({
-                            price: level.price,
-                            color: level.color,
-                            lineWidth: 3,
-                            lineStyle: LightweightCharts.LineStyle.Solid,
-                            axisLabelVisible: true,
-                            title: `${level.label} ${htf} (${level.touches})`,
-                        }));
-                    });
+                    if (this.show.htfLevels) {
+                        const htf = this.data.htf_interval ?? 'HTF';
+                        (this.data.htf_levels || []).forEach(level => {
+                            this.overlay.htfLevelLines.push(this.candleSeries.createPriceLine({
+                                price: level.price,
+                                color: level.color,
+                                lineWidth: 3,
+                                lineStyle: LightweightCharts.LineStyle.Solid,
+                                axisLabelVisible: true,
+                                title: `${level.label} ${htf} (${level.touches})`,
+                            }));
+                        });
+                    }
+                    if (this.candleSeries) {
+                        this.candleSeries.applyOptions({});
+                    }
                 },
 
                 applyAtr() {
                     this.clearPriceLines('atrLines');
-                    if (!this.show.atr) return;
-                    const candles = this.data.candles || [];
-                    const atr = this.data.atr || 0;
-                    if (!candles.length || !atr) return;
-                    const last = candles[candles.length - 1].close;
-                    [['ATR +', last + atr], ['ATR −', last - atr]].forEach(([title, price]) => {
-                        this.overlay.atrLines.push(this.candleSeries.createPriceLine({
-                            price, color: '#f59e0b', lineWidth: 1,
-                            lineStyle: LightweightCharts.LineStyle.Dotted,
-                            axisLabelVisible: true, title,
-                        }));
-                    });
+                    if (this.show.atr) {
+                        const candles = this.data.candles || [];
+                        const atr = this.data.atr || 0;
+                        if (candles.length && atr) {
+                            const last = candles[candles.length - 1].close;
+                            [['ATR +', last + atr], ['ATR −', last - atr]].forEach(([title, price]) => {
+                                this.overlay.atrLines.push(this.candleSeries.createPriceLine({
+                                    price, color: '#f59e0b', lineWidth: 1,
+                                    lineStyle: LightweightCharts.LineStyle.Dotted,
+                                    axisLabelVisible: true, title,
+                                }));
+                            });
+                        }
+                    }
+                    if (this.candleSeries) {
+                        this.candleSeries.applyOptions({});
+                    }
                 },
 
                 applyPatterns() {

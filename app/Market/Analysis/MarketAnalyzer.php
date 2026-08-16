@@ -41,23 +41,104 @@ final class MarketAnalyzer implements MarketAnalyzerInterface
             return [];
         }
 
+        $atr = SeriesMath::atr($candles, 14);
+        $lastClose = $candles[count($candles) - 1]->close;
+        $tolerance = max($atr * 0.6, $lastClose * 0.0035);
+
+        // 1. Long-term levels (from the full history, e.g., 500 candles)
+        $longTermLevels = $this->calculateLevelsForCandles($candles, $tolerance, $maxLevels);
+
+        // 2. Short-term levels (from the last 24 hours)
+        $secondsPerCandle = config("exchange.timeframes.{$interval}", 3600);
+        $candlesInDay = (int) ceil(86400 / $secondsPerCandle);
+        $recentCount = max(30, min(150, $candlesInDay));
+
+        $recentLevels = [];
+        if (count($candles) > $recentCount) {
+            $recentCandles = array_slice($candles, -$recentCount);
+            $recentLevels = $this->calculateLevelsForCandles($recentCandles, $tolerance, 3);
+        }
+
+        // 3. Merge levels prioritizing a mix of recent and long-term levels
+        $recentLimit = (int) ceil($maxLevels / 2); // e.g., 2 if maxLevels is 4
+        $selected = [];
+
+        // Seed with the most significant recent levels
+        foreach (array_slice($recentLevels, 0, $recentLimit) as $lvl) {
+            $selected[] = $lvl;
+        }
+
+        // Merge long-term levels, updating duplicates (within tolerance) or adding new ones
+        foreach ($longTermLevels as $lvl) {
+            $duplicateKey = null;
+            foreach ($selected as $idx => $existing) {
+                if (abs($existing->price - $lvl->price) <= $tolerance) {
+                    $duplicateKey = $idx;
+                    break;
+                }
+            }
+
+            if ($duplicateKey !== null) {
+                $existing = $selected[$duplicateKey];
+                $selected[$duplicateKey] = new Level(
+                    price: $lvl->touches >= $existing->touches ? $lvl->price : $existing->price,
+                    type: $existing->type,
+                    strength: max($existing->strength, $lvl->strength),
+                    touches: max($existing->touches, $lvl->touches),
+                );
+            } else {
+                if (count($selected) < $maxLevels) {
+                    $selected[] = $lvl;
+                }
+            }
+        }
+
+        // Fill any remaining slots with the remaining recent levels
+        if (count($selected) < $maxLevels && count($recentLevels) > $recentLimit) {
+            foreach (array_slice($recentLevels, $recentLimit) as $lvl) {
+                if (count($selected) >= $maxLevels) {
+                    break;
+                }
+                $duplicate = false;
+                foreach ($selected as $existing) {
+                    if (abs($existing->price - $lvl->price) <= $tolerance) {
+                        $duplicate = true;
+                        break;
+                    }
+                }
+                if (!$duplicate) {
+                    $selected[] = $lvl;
+                }
+            }
+        }
+
+        return $selected;
+    }
+
+    /**
+     * @param array<int, Candle> $candles
+     * @return array<int, Level>
+     */
+    private function calculateLevelsForCandles(array $candles, float $tolerance, int $limit): array
+    {
+        if (count($candles) < 20) {
+            return [];
+        }
+
         $pivots = SeriesMath::pivots($candles, 3, 3);
         if ($pivots === []) {
             return [];
         }
 
-        $atr = SeriesMath::atr($candles, 14);
-        $lastClose = $candles[count($candles) - 1]->close;
-        $tolerance = max($atr * 0.6, $lastClose * 0.0035);
         $total = count($candles);
-
         $clusters = $this->clusterPivots($pivots, $tolerance, $total);
 
         // Rank clusters by score (touches dominate, recency breaks ties).
         usort($clusters, static fn (array $a, array $b) => $b['score'] <=> $a['score']);
 
+        $lastClose = $candles[count($candles) - 1]->close;
         $levels = [];
-        foreach (array_slice($clusters, 0, $maxLevels) as $cluster) {
+        foreach (array_slice($clusters, 0, $limit) as $cluster) {
             $type = $cluster['price'] <= $lastClose ? LevelType::Support : LevelType::Resistance;
             $strength = min(1.0, ($cluster['touches'] / 5) + 0.1 * $cluster['recency']);
 
