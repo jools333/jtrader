@@ -80,13 +80,18 @@ class MarketDashboard extends Page
 
         $candles = $repository->recent($symbol, $interval, (int) config('exchange.klines_limit', 500));
         $htfInterval = $this->higherTimeframe($interval);
+        $atr = $analyzer->atr($symbol, $interval);
+
+        $lastClose = count($candles) > 0 ? end($candles)->close : null;
+        $atrPercent = ($atr > 0 && $lastClose > 0) ? round(($atr / $lastClose) * 100, 3) : 0.0;
 
         return [
             'symbol' => $symbol,
             'interval' => $interval,
             'exchange' => $exchange->name(),
             'candles' => array_map(static fn (Candle $c) => $c->toChartArray(), $candles),
-            'atr' => $analyzer->atr($symbol, $interval),
+            'atr' => $atr,
+            'atr_percent' => $atrPercent,
             'levels' => array_map(static fn (Level $l) => $l->toArray(), $analyzer->levels($symbol, $interval)),
             'htf_interval' => $htfInterval,
             'htf_levels' => $htfInterval
