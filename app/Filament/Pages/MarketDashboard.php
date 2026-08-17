@@ -86,6 +86,18 @@ class MarketDashboard extends Page
         $currentRange = $lastCandle ? ($lastCandle->high - $lastCandle->low) : 0.0;
         $atrPercent = ($atr > 0) ? round(($currentRange / $atr) * 100, 1) : 0.0;
 
+        $htfLevels = $htfInterval ? $analyzer->levels($symbol, $htfInterval) : [];
+
+        $atrTravelSigned = null;
+        if ($lastCandle && count($htfLevels) > 0 && $atr > 0.0) {
+            $price = $lastCandle->close;
+            $distances = array_map(fn (Level $l) => abs($l->price - $price), $htfLevels);
+            asort($distances);
+            $nearestKey = key($distances);
+            $nearestLevel = $htfLevels[$nearestKey]->price;
+            $atrTravelSigned = round(($price - $nearestLevel) / $atr, 2);
+        }
+
         return [
             'symbol' => $symbol,
             'interval' => $interval,
@@ -93,11 +105,10 @@ class MarketDashboard extends Page
             'candles' => array_map(static fn (Candle $c) => $c->toChartArray(), $candles),
             'atr' => $atr,
             'atr_percent' => $atrPercent,
+            'atr_travel_signed' => $atrTravelSigned,
             'levels' => array_map(static fn (Level $l) => $l->toArray(), $analyzer->levels($symbol, $interval)),
             'htf_interval' => $htfInterval,
-            'htf_levels' => $htfInterval
-                ? array_map(static fn (Level $l) => $l->toArray(), $analyzer->levels($symbol, $htfInterval))
-                : [],
+            'htf_levels' => array_map(static fn (Level $l) => $l->toArray(), $htfLevels),
             'trend' => $analyzer->trend($symbol, $interval)->toArray(),
             'patterns' => array_map(static fn (Pattern $p) => $p->toArray(), $analyzer->patterns($symbol, $interval)),
             'ticker' => $this->safeTicker($exchange, $symbol),

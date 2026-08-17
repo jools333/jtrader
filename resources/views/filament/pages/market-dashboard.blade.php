@@ -86,7 +86,7 @@
                 {{-- ATR value --}}
                 <template x-if="data.atr">
                     <span class="rounded-lg bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-600 dark:bg-orange-500/10 dark:text-orange-400">
-                        ATR <span x-text="data.atr"></span> <span class="opacity-75" x-text="'(ход свечи: ' + data.atr_percent + '%)'"></span>
+                        ATR <span x-text="data.atr"></span> <span class="opacity-75" x-text="data.atr_travel_signed !== null ? '(от уровня: ' + (data.atr_travel_signed > 0 ? '+' : '') + data.atr_travel_signed + ' ATR)' : ''"></span>
                     </span>
                 </template>
             </div>

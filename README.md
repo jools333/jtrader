@@ -272,6 +272,36 @@ agent:scan
 
 ---
 
+## Как реализовать собственный паттерн входа/выхода
+
+Для добавления нового торгового паттерна (сетапа) или логики выхода следуйте этой пошаговой инструкции:
+
+1. **Регистрация типов в Enums:**
+   - **Вход:** Зарегистрируйте новый сетап в [`SignalType.php`](file:///home/jools/jtrader-cl/app/Trading/Enums/SignalType.php) (например, `case MyPattern = 'MY_PATTERN';`).
+   - **Выход:** Если паттерн вводит новые условия раннего закрытия позиции, зарегистрируйте причину в [`ExitReason.php`](file:///home/jools/jtrader-cl/app/Trading/Enums/ExitReason.php) (например, `case MyReason = 'my_reason';`).
+   - **Тип выхода:** Если это полностью новая механика закрытия (не TP/SL/EarlyReversal), добавьте её в [`ExitType.php`](file:///home/jools/jtrader-cl/app/Trading/Enums/ExitType.php).
+
+2. **Математические сигналы и индикаторы (при необходимости):**
+   - Для анализа отдельных свечей добавьте новые методы в [`CandleSignals.php`](file:///home/jools/jtrader-cl/app/Trading/Analysis/CandleSignals.php) (например, распознавание свечных паттернов).
+   - Для расчётов по временным рядам добавьте формулы в [`SeriesMath.php`](file:///home/jools/jtrader-cl/app/Market/Analysis/Support/SeriesMath.php).
+
+3. **Вспомогательные методы контекста (при необходимости):**
+   - Добавьте хелперы для опроса состояния графика/индикаторов в [`RuleContext.php`](file:///home/jools/jtrader-cl/app/Trading/Agent/RuleContext.php) (например, проверку пересечения линий `isEmaCrossover()`).
+
+4. **Реализация правил в TradingAgent:**
+   - Откройте [`TradingAgent.php`](file:///home/jools/jtrader-cl/app/Trading/Agent/TradingAgent.php).
+   - **Для Входа:** Напишите приватный метод сетапа (например, `ruleMyPattern(RuleContext $ctx): ?EntrySignal`), возвращающий результат планирования `$this->plan($ctx, SignalType::MyPattern, $direction)`. Зарегистрируйте его в методе `evaluateEntry()` внутри массива `$rule`.
+   - **Для Выхода:** Добавьте новые проверки в метод `evaluateExit()`, либо расширьте разворотные триггеры в методе `reversalReason()`.
+
+5. **Настройки параметров (при необходимости):**
+   - Добавьте нужные коэффициенты и пороги в [`config/trading.php`](file:///home/jools/jtrader-cl/config/trading.php) в секцию `agent`.
+   - Внутри `TradingAgent` считывайте их с помощью метода `$this->cfg('my_param', 1.0)`.
+
+6. **Тестирование:**
+   - Напишите тесты под ваш паттерн в [`TradingAgentTest.php`](file:///home/jools/jtrader-cl/tests/Unit/TradingAgentTest.php), используя генерацию мок-свечей.
+
+---
+
 ## Запуск и проверка
 
 ```bash
