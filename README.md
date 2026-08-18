@@ -160,11 +160,11 @@ MarketAnalyzerInterface    ← анализ (atr / levels / trend / patterns)
 - **`app/Filament/Pages/MarketDashboard.php`** — серверная часть. Метод
   **`marketData($symbol, $interval)`** дёргается из браузера через `$wire.marketData(...)`
   (отдельного JSON-API роута нет). Санитизирует symbol/interval против конфига и собирает один
-  payload: свечи + atr + levels + trend + patterns + ticker. `safeTicker()` оборачивает живой
-  вызов — его падение не ломает страницу (в тестах деградирует в `null`).
+  payload: свечи + atr + levels + trend + patterns + ticker + `atr_travel_signed`. `safeTicker()`
+  оборачивает живой вызов — его падение не ломает страницу (в тестах деградирует в `null`).
 - **`resources/views/filament/pages/market-dashboard.blade.php`** — Alpine.js-компонент
   `marketDashboard`. Тулбар (выбор пары/ТФ, тумблеры Уровни / Фигуры / ATR, бейдж тренда,
-  цена, ATR), построение графика, живое обновление каждые 30с **без сброса зума** (`refresh`
+  цена, ATR с расстоянием до уровня), построение графика, живое обновление каждые 30с **без сброса зума** (`refresh`
   не делает `fitContent`, в отличие от `reload`). Тумблеры оверлеев пере-применяют price
   lines / line series **на клиенте** из одного закэшированного payload, без новых запросов.
   Библиотека `lightweight-charts` **самохостится** из `public/vendor/lightweight-charts/`.
@@ -226,28 +226,32 @@ agent:scan
             └─ если позиции НЕТ    → TradingAgent.evaluateEntry()
 ```
 
-### Что проверяет TradingAgent
+### Архитектура TradingAgent (Паттерн Стратегия & Clean Code)
 
-Индикаторы (считаются in-process из свечей): EMA 8 и EMA 21, MACD (12/26/9), ATR (SMA-метод, 14 периодов).
+`TradingAgent` спроектирован в соответствии с принципами **Clean Code** (SOLID):
+- **Оркестратор:** `TradingAgent` вычисляет снимки индикаторов (`IndicatorSnapshot`) и координирует проверки.
+- **Паттерн Стратегия:** Каждое правило входа (`EntryStrategyInterface`) и выхода (`ExitStrategyInterface`) вынесено в изолированный класс в каталогах `app/Trading/Strategies/Entry/` и `app/Trading/Strategies/Exit/`.
+- **Планировщик:** Построение торгового плана (стоп, тейки, RR) инкапсулировано в `TradePlanner`.
+- **Защитные фильтры:** Глобальные проверки рынка инкапсулированы в `EntryGuard`.
 
-**Правила входа** (4 сетапа, все ATR-относительные):
+**Стратегии входа (`app/Trading/Strategies/Entry/`):**
 
-| # | Правило | Суть |
-|---|---------|------|
-| 1 | `Bounce` | Отскок от уровня — последние 3 свечи в зоне, компрессия, импульс против уровня |
-| 2 | `Retest` | Пробой + возврат — был пробойный бар в последних 10, EMA по тренду, сейчас компрессия + импульс |
-| 3 | `FalseBreakout` | Ложный пробой — предыдущая свеча пробила уровень виком, тело закрылось обратно |
-| 4 | `TrendPullback` | Откат в тренде — EMA-тренд на 5 барах, цена вернулась к уровню |
+| # | Стратегия | Суть |
+|---|-----------|------|
+| 1 | `BounceStrategy` | Отскок от уровня — последние 3 свечи в зоне, компрессия, импульс против уровня |
+| 2 | `RetestStrategy` | Пробой + возврат — был пробойный бар в последних 10, EMA по тренду, компрессия + импульс |
+| 3 | `FalseBreakoutStrategy` | Ложный пробой — предыдущая свеча пробила уровень тенью, тело закрылось обратно |
+| 4 | `TrendPullbackStrategy` | Откат в тренде — EMA-тренд на 5 барах, цена вернулась к уровню |
 
-Глобальные фильтры входа: цена не дальше 60% ATR от уровня, последние 5 свечей шире ATR×0.30 (фильтр мёртвого флета), R:R не ниже 2.0, не дублировать сигнал из последних 5 баров.
+Глобальные фильтры входа (`EntryGuard`): цена не дальше 60% ATR от уровня, последние 5 свечей шире ATR×0.30 (фильтр мёртвого флета), R:R не ниже 2.0, не дублировать сигнал из последних 5 баров.
 
 Параметры сделки (`config/trading.php`): стоп — уровень ± ATR×0.5, Target 1 — вход ± риск×2, Target 2 — вход ± риск×4.
 
-**Правила выхода** (приоритет сверху вниз):
-1. Стоп-лосс (или break-even стоп после T1)
-2. Полный выход на T2
-3. Частичный (50%) на T1 + стоп в безубыток
-4. Ранний выход на разворот: 2 компрессионных бара + импульс против + дивергенция / поглощение / разворот EMA8
+**Стратегии выхода (`app/Trading/Strategies/Exit/`, приоритет сверху вниз):**
+1. `StopLossStrategy`: Стоп-лосс (или break-even стоп после T1)
+2. `Target2Strategy`: Полный выход на T2
+3. `Target1Strategy`: Частичный (50%) на T1 + перенос стопа в безубыток
+4. `EarlyReversalStrategy`: Ранний выход на разворот (2 бара компрессии + контр-импульс + дивергенция / поглощение / разворот EMA8)
 
 ### Исполнение ордеров
 
@@ -268,7 +272,7 @@ agent:scan
 | Новый индикатор | `SeriesMath` → метод в `MarketAnalyzer`/интерфейсе → DTO → payload в `marketData()` → blade |
 | Новая фигура | `PatternDetector::detect()` + приватный метод-детектор |
 | Цвета/подписи уровней и тренда | enum'ы `LevelType` / `TrendDirection` |
-| Торговый модуль (будущее) | потреблять `MarketAnalyzerInterface`, не лезть в биржу/БД напрямую |
+| Новая стратегия входа/выхода | `app/Trading/Strategies/Entry/` или `Exit/` + регистрация в `TradingAgent` |
 
 ---
 
@@ -288,17 +292,15 @@ agent:scan
 3. **Вспомогательные методы контекста (при необходимости):**
    - Добавьте хелперы для опроса состояния графика/индикаторов в [`RuleContext.php`](file:///home/jools/jtrader-cl/app/Trading/Agent/RuleContext.php) (например, проверку пересечения линий `isEmaCrossover()`).
 
-4. **Реализация правил в TradingAgent:**
-   - Откройте [`TradingAgent.php`](file:///home/jools/jtrader-cl/app/Trading/Agent/TradingAgent.php).
-   - **Для Входа:** Напишите приватный метод сетапа (например, `ruleMyPattern(RuleContext $ctx): ?EntrySignal`), возвращающий результат планирования `$this->plan($ctx, SignalType::MyPattern, $direction)`. Зарегистрируйте его в методе `evaluateEntry()` внутри массива `$rule`.
-   - **Для Выхода:** Добавьте новые проверки в метод `evaluateExit()`, либо расширьте разворотные триггеры в методе `reversalReason()`.
+4. **Реализация стратегии (Паттерн Стратегия):**
+   - **Для Входа:** Создайте класс в `app/Trading/Strategies/Entry/` (например, `MyPatternStrategy.php`), реализующий [`EntryStrategyInterface`](file:///home/jools/jtrader-cl/app/Trading/Contracts/EntryStrategyInterface.php). В методе `evaluate(RuleContext $ctx, TradePlanner $planner)` опишите условия и вызовите `$planner->plan($ctx, SignalType::MyPattern, $direction)`. Зарегистрируйте стратегию в конструкторе [`TradingAgent.php`](file:///home/jools/jtrader-cl/app/Trading/Agent/TradingAgent.php).
+   - **Для Выхода:** Создайте класс в `app/Trading/Strategies/Exit/` (например, `MyExitStrategy.php`), реализующий [`ExitStrategyInterface`](file:///home/jools/jtrader-cl/app/Trading/Contracts/ExitStrategyInterface.php), и добавьте его в список `$exitStrategies` в [`TradingAgent.php`](file:///home/jools/jtrader-cl/app/Trading/Agent/TradingAgent.php).
 
 5. **Настройки параметров (при необходимости):**
    - Добавьте нужные коэффициенты и пороги в [`config/trading.php`](file:///home/jools/jtrader-cl/config/trading.php) в секцию `agent`.
-   - Внутри `TradingAgent` считывайте их с помощью метода `$this->cfg('my_param', 1.0)`.
 
 6. **Тестирование:**
-   - Напишите тесты под ваш паттерн в [`TradingAgentTest.php`](file:///home/jools/jtrader-cl/tests/Unit/TradingAgentTest.php), используя генерацию мок-свечей.
+   - Напишите юнит-тесты под вашу стратегию в [`TradingAgentTest.php`](file:///home/jools/jtrader-cl/tests/Unit/TradingAgentTest.php), используя генерацию мок-свечей.
 
 ---
 

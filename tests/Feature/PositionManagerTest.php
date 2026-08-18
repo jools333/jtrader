@@ -54,6 +54,7 @@ class PositionManagerTest extends TestCase
             config: array_merge((array) config('trading'), [
                 'risk_percent' => $riskPct,
                 'paper_balance' => $paperBalance,
+                'max_position_pct' => 0.0,
             ]),
         );
     }
