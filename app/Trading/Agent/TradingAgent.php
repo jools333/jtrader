@@ -74,12 +74,9 @@ final class TradingAgent implements TradingAgentInterface
         // Инициализация фильтров защиты
         $this->guard = $guard ?? new EntryGuard($this->config);
 
-        // Регистрация набора стратегий входа по умолчанию
+        // Регистрация набора стратегий входа по умолчанию (активна только BounceStrategy)
         $this->entryStrategies = $entryStrategies ?? [
             new BounceStrategy(),
-            new RetestStrategy(),
-            new FalseBreakoutStrategy(),
-            new TrendPullbackStrategy(),
         ];
 
         // Регистрация набора стратегий выхода в порядке строгого приоритета

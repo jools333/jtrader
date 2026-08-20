@@ -106,6 +106,58 @@ class TradingAgentTest extends TestCase
         $this->assertLessThan($result->entrySignal->entryPrice, $result->entrySignal->target2);
     }
 
+    public function test_bounce_long_breakout_pullback_retest_pattern(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+
+        // 1. Prior approach below level (baseline 45 candles 92 -> 98, total >= 50)
+        $candles = $this->baseline(45, 92, 98);
+
+        // 2. Breakout above 100 with impulse to 104.5 (Peak above level >= 100 + 0.35*10 = 103.5)
+        $candles[] = $this->candle(98.0, 103.0, 97.8, 102.5); // breakout candle
+        $candles[] = $this->candle(102.5, 104.5, 102.0, 104.0); // peak candle
+
+        // 3. Pullback to support level (100.0) with compression candles
+        $candles[] = $this->candle(104.0, 104.2, 101.5, 102.0); // pullback
+        $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8); // compression / touch zone
+        $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);  // compression / touch zone
+        $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);  // compression
+
+        // 4. Confirmation bounce impulse (open 100.1, close 103.8, body 3.7 >= 3.5 ATR)
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8);
+
+        $result = $this->agent()->evaluate($candles, $level, $atr);
+
+        $this->assertNotNull($result->entrySignal);
+        $this->assertSame(SignalType::Bounce, $result->entrySignal->type);
+        $this->assertSame(Direction::Long, $result->entrySignal->direction);
+        $this->assertGreaterThanOrEqual(2.0, $result->entrySignal->rrRatio);
+        // Stop is below support level / pullback swing low
+        $this->assertLessThan($level, $result->entrySignal->stop);
+        $this->assertGreaterThan($result->entrySignal->entryPrice, $result->entrySignal->target2);
+    }
+
+    public function test_bounce_long_rejected_if_level_breached_deeply(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+        $candles = $this->baseline(48, 92, 98);
+        $candles[] = $this->candle(98.0, 104.5, 97.8, 104.0); // peak 104.5
+        // Pullback crashes deeply below level to 94.0 (breach > 0.40 ATR = 4.0 below 100)
+        $candles[] = $this->candle(104.0, 104.0, 94.0, 95.0);
+        $candles[] = $this->candle(95.0, 102.0, 94.8, 101.5); // bounce attempt
+
+        $result = $this->agent()->evaluate($candles, $level, $atr);
+
+        // Should not produce a Bounce signal because support failed
+        if ($result->entrySignal !== null) {
+            $this->assertNotSame(SignalType::Bounce, $result->entrySignal->type);
+        } else {
+            $this->assertNull($result->entrySignal);
+        }
+    }
+
     public function test_duplicate_signal_type_is_suppressed(): void
     {
         $atr = 10.0;

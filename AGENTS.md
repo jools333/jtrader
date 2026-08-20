@@ -87,3 +87,16 @@ behaves). **It can also change between sessions — always test reachability emp
 The image has `python3`, `python3-matplotlib`, and `ext-intl` installed (see `docker/php/Dockerfile`).
 `gd` and `bcmath` are absent but not required. `ext-intl` is needed by Laravel's `Number` helper
 and Filament pagination — it is compiled in the Dockerfile via `docker-php-ext-install intl`.
+
+## Trading Module & Entry Strategies
+
+Trading logic is located in `app/Trading/`:
+- **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window.
+- **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector (~20-25 candles lookback) without secondary indicators (EMA/MACD):
+  1. *Breakout / Impulse Peak*: checks prior move beyond level ($\ge 0.35 \times \text{ATR}$).
+  2. *Pullback to level*: price returns into level zone ($\le 0.25 \times \text{ATR}$) and holds ($< 0.40 \times \text{ATR}$ penetration).
+  3. *Compression*: volume/range deceleration near level.
+  4. *Impulse Bounce*: trigger candle body $\ge 0.35 \times \text{ATR}$ in the direction of the trade within $0.50 \times \text{ATR}$ entry zone.
+  5. *Stop-loss*: placed beyond the pullback swing extrema.
+- **Active Entry Strategies Status**: Currently only `BounceStrategy` is registered as active in `TradingAgent::__construct()`. The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
+
