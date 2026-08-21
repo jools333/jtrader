@@ -63,6 +63,87 @@ final class ChartRenderer
     }
 
     /**
+     * Render a chart for a strategy evaluation record and return relative path.
+     *
+     * @param array<int, Candle> $candles
+     */
+    public function renderEvaluation(\App\Models\StrategyEvaluation $evaluation, array $candles): ?string
+    {
+        if (! ($this->config['enabled'] ?? false)) {
+            return null;
+        }
+
+        $window = array_slice(array_values($candles), -(int) ($this->config['window'] ?? 60));
+        if (count($window) < 2) {
+            return null;
+        }
+
+        $specPath = storage_path("app/charts/specs/eval_{$evaluation->id}.json");
+        $relative = "charts/evaluations/eval_{$evaluation->id}.png";
+        $outPath = storage_path("app/public/{$relative}");
+
+        File::ensureDirectoryExists(dirname($specPath));
+        File::ensureDirectoryExists(dirname($outPath));
+        File::put($specPath, json_encode($this->buildEvaluationSpec($evaluation, $window, $outPath), JSON_THROW_ON_ERROR));
+
+        return $this->invoke($specPath, $relative, $outPath);
+    }
+
+    /**
+     * Assemble the JSON spec for an evaluation chart.
+     *
+     * @param array<int, Candle> $window
+     * @return array<string, mixed>
+     */
+    private function buildEvaluationSpec(\App\Models\StrategyEvaluation $evaluation, array $window, string $outPath): array
+    {
+        $closes = array_map(static fn (Candle $c) => $c->close, $window);
+        $atr = $evaluation->atr > 0.0 ? $evaluation->atr : SeriesMath::atrSma($window, 14);
+
+        $candles = array_map(function (Candle $c) use ($atr): array {
+            $impulse = null;
+            if (CandleSignals::isBullishImpulse($c, $atr)) {
+                $impulse = 'bull';
+            } elseif (CandleSignals::isBearishImpulse($c, $atr)) {
+                $impulse = 'bear';
+            }
+
+            return [
+                'o' => $c->open, 'h' => $c->high, 'l' => $c->low, 'c' => $c->close, 'v' => $c->volume,
+                'compression' => CandleSignals::isCompression($c, $atr),
+                'impulse' => $impulse,
+            ];
+        }, $window);
+
+        $long = $evaluation->direction === 'LONG';
+        $statusLabel = $evaluation->status === 'completed' ? '100% ВХОД' : "СЕТАП {$evaluation->score}%";
+
+        $spec = [
+            'title' => "{$evaluation->symbol} {$evaluation->interval} — {$evaluation->strategy} ({$statusLabel})",
+            'candles' => $candles,
+            'level' => round($evaluation->level, 8),
+            'stop' => $evaluation->stop_price !== null ? round($evaluation->stop_price, 8) : null,
+            'target1' => $evaluation->target1 !== null ? round($evaluation->target1, 8) : null,
+            'target2' => $evaluation->target2 !== null ? round($evaluation->target2, 8) : null,
+            'ema_fast' => array_map(static fn (float $v) => round($v, 8), SeriesMath::ema($closes, 8)),
+            'ema_fast_period' => 8,
+            'ema_slow' => array_map(static fn (float $v) => round($v, 8), SeriesMath::ema($closes, 21)),
+            'ema_slow_period' => 21,
+            'atr' => round($atr, 8),
+            'entry' => [
+                'index' => count($window) - 1,
+                'price' => round($evaluation->current_price, 8),
+                'direction' => $long ? 'up' : 'down',
+                'label' => "{$statusLabel}\n" . ($long ? 'Long' : 'Short'),
+            ],
+            'exit' => null,
+            'out' => $outPath,
+        ];
+
+        return $spec;
+    }
+
+    /**
      * Assemble the JSON spec consumed by the Python renderer.
      *
      * @param array<int, Candle> $window

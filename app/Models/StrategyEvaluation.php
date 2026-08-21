@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property array<string, array{name: string, passed: bool, expected: string, actual: string}>|null $criteria_breakdown
  * @property array<string, mixed>|null $indicators
  * @property int|null $candle_open_time
+ * @property string|null $chart_path
  * @property \Illuminate\Support\Carbon $evaluated_at
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at

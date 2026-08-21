@@ -102,7 +102,7 @@ Trading logic is located in `app/Trading/`:
 - **Strategy Statistics & Diagnostics Logging**:
   - `BounceStrategy::diagnose()` scores 7 individual criteria (prior impulse, pullback touch, level held, compression, impulse trigger, entry zone, R:R).
   - All evaluations reaching $\ge 50\%$ criteria match are logged into `strategy_evaluations` table via `StrategyLoggerInterface` / `DatabaseStrategyLogger`.
-  - Records include completion score %, status (`completed` for 100% / `partial` for 50-99%), exact values vs expected thresholds, and human-readable `missing_criteria` list.
-  - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, and `StrategyStatsOverview` widget.
+  - Records include completion score %, status (`completed` for 100% / `partial` for 50-99%), exact values vs expected thresholds, human-readable `missing_criteria` list, and rendered candlestick chart (`chart_path`) generated via `ChartRenderer::renderEvaluation()`.
+  - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, full-size chart view, and `StrategyStatsOverview` widget.
 
 

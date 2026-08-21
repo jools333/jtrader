@@ -206,4 +206,38 @@ class StrategyEvaluationTest extends TestCase
         $response->assertSee('Статистика стратегий');
         $response->assertSee('BTC-USDT');
     }
+
+    public function test_chart_rendered_for_strategy_evaluation(): void
+    {
+        $eval = StrategyEvaluation::create([
+            'symbol' => 'BTC-USDT',
+            'interval' => '5m',
+            'strategy' => 'BounceStrategy',
+            'direction' => 'LONG',
+            'status' => 'completed',
+            'score' => 100.0,
+            'passed_count' => 7,
+            'total_count' => 7,
+            'level' => 100.0,
+            'atr' => 10.0,
+            'current_price' => 103.8,
+            'entry_price' => 103.8,
+            'stop_price' => 98.5,
+            'target1' => 114.4,
+            'target2' => 125.0,
+            'rr_ratio' => 4.0,
+            'missing_criteria' => [],
+            'criteria_breakdown' => [],
+            'evaluated_at' => now(),
+        ]);
+
+        $candles = $this->baseline(30, 95, 103);
+        $chartRenderer = new \App\Trading\Charting\ChartRenderer(['enabled' => true]);
+
+        $path = $chartRenderer->renderEvaluation($eval, $candles);
+
+        $this->assertNotNull($path);
+        $this->assertStringContainsString("charts/evaluations/eval_{$eval->id}.png", $path);
+        $this->assertFileExists(storage_path("app/public/{$path}"));
+    }
 }

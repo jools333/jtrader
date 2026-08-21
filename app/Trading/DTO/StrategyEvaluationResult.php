@@ -33,6 +33,7 @@ final class StrategyEvaluationResult
         public readonly ?string $symbol = null,
         public readonly ?string $interval = null,
         public readonly ?int $candleOpenTime = null,
+        public readonly ?array $candles = null,
     ) {
     }
 

@@ -283,6 +283,18 @@ class StrategyEvaluationResource extends Resource
                         ->separator(','),
                 ]),
 
+            Section::make('График сетапа')
+                ->visible(fn (StrategyEvaluation $record): bool => $record->chart_path !== null)
+                ->schema([
+                    \Filament\Infolists\Components\ImageEntry::make('chart_path')
+                        ->label('')
+                        ->disk('public')
+                        ->columnSpanFull()
+                        ->height(500)
+                        ->url(fn (StrategyEvaluation $record): string => asset('storage/'.$record->chart_path))
+                        ->openUrlInNewTab(),
+                ]),
+
             Section::make('Торговый план')
                 ->visible(fn (StrategyEvaluation $record): bool => $record->entry_price !== null)
                 ->columns(4)

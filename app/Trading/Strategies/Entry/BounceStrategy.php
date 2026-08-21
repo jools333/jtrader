@@ -270,6 +270,7 @@ final class BounceStrategy implements EntryStrategyInterface
             symbol: $ctx->symbol,
             interval: $ctx->interval,
             candleOpenTime: $last->openTime,
+            candles: $window,
         );
     }
 
@@ -449,6 +450,7 @@ final class BounceStrategy implements EntryStrategyInterface
             symbol: $ctx->symbol,
             interval: $ctx->interval,
             candleOpenTime: $last->openTime,
+            candles: $window,
         );
     }
 

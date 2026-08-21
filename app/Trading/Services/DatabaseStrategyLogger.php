@@ -10,13 +10,17 @@ use App\Trading\DTO\StrategyEvaluationResult;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
+use App\Trading\Charting\ChartRenderer;
+
 /**
  * Persists strategy evaluations (completed or partial >= threshold) to database.
  */
 final class DatabaseStrategyLogger implements StrategyLoggerInterface
 {
-    public function __construct(private readonly float $minScoreThreshold = 50.0)
-    {
+    public function __construct(
+        private readonly float $minScoreThreshold = 50.0,
+        private readonly ?ChartRenderer $chart = null,
+    ) {
     }
 
     public function log(StrategyEvaluationResult $result): void
@@ -27,7 +31,7 @@ final class DatabaseStrategyLogger implements StrategyLoggerInterface
         }
 
         try {
-            StrategyEvaluation::create([
+            $evaluation = StrategyEvaluation::create([
                 'symbol' => $result->symbol,
                 'interval' => $result->interval,
                 'strategy' => $result->strategy,
@@ -50,6 +54,14 @@ final class DatabaseStrategyLogger implements StrategyLoggerInterface
                 'candle_open_time' => $result->candleOpenTime,
                 'evaluated_at' => now(),
             ]);
+
+            // If candles are available and chart rendering is enabled, render and attach chart
+            if ($this->chart !== null && ! empty($result->candles)) {
+                $path = $this->chart->renderEvaluation($evaluation, $result->candles);
+                if ($path !== null) {
+                    $evaluation->update(['chart_path' => $path]);
+                }
+            }
         } catch (Throwable $e) {
             Log::warning('Failed to log strategy evaluation', [
                 'strategy' => $result->strategy,

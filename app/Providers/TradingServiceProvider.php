@@ -31,8 +31,9 @@ class TradingServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(StrategyLoggerInterface::class, fn () => new DatabaseStrategyLogger(
+        $this->app->singleton(StrategyLoggerInterface::class, fn (Application $app) => new DatabaseStrategyLogger(
             minScoreThreshold: (float) config('trading.min_eval_log_score', 50.0),
+            chart: $app->make(ChartRenderer::class),
         ));
 
         $this->app->singleton(TradingAgentInterface::class, fn (Application $app) => new TradingAgent(
