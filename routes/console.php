@@ -14,3 +14,13 @@ Artisan::command('inspire', function () {
 Schedule::command('agent:scan')
     ->everyThirtySeconds()
     ->withoutOverlapping();
+
+Schedule::command('strategy:render-outcomes')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+Schedule::command('strategy:prune')
+    ->daily()
+    ->withoutOverlapping();
+
+

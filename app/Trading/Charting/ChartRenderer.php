@@ -144,6 +144,90 @@ final class ChartRenderer
     }
 
     /**
+     * Render follow-up outcome chart for a strategy evaluation and return relative path.
+     *
+     * @param array<int, Candle> $candles Full window including before and after candles
+     * @param int $targetOpenTime Open time of the candle where the setup occurred
+     */
+    public function renderOutcome(\App\Models\StrategyEvaluation $evaluation, array $candles, int $targetOpenTime): ?string
+    {
+        if (! ($this->config['enabled'] ?? false)) {
+            return null;
+        }
+
+        if (count($candles) < 2) {
+            return null;
+        }
+
+        $specPath = storage_path("app/charts/specs/outcome_{$evaluation->id}.json");
+        $relative = "charts/evaluations/outcome_{$evaluation->id}.png";
+        $outPath = storage_path("app/public/{$relative}");
+
+        File::ensureDirectoryExists(dirname($specPath));
+        File::ensureDirectoryExists(dirname($outPath));
+        File::put($specPath, json_encode($this->buildOutcomeSpec($evaluation, $candles, $targetOpenTime, $outPath), JSON_THROW_ON_ERROR));
+
+        return $this->invoke($specPath, $relative, $outPath);
+    }
+
+    /**
+     * Assemble the JSON spec for an outcome follow-up chart.
+     *
+     * @param array<int, Candle> $candles
+     * @return array<string, mixed>
+     */
+    private function buildOutcomeSpec(\App\Models\StrategyEvaluation $evaluation, array $candles, int $targetOpenTime, string $outPath): array
+    {
+        $closes = array_map(static fn (Candle $c) => $c->close, $candles);
+        $atr = $evaluation->atr > 0.0 ? $evaluation->atr : SeriesMath::atrSma($candles, 14);
+
+        $candleList = array_map(function (Candle $c) use ($atr): array {
+            $impulse = null;
+            if (CandleSignals::isBullishImpulse($c, $atr)) {
+                $impulse = 'bull';
+            } elseif (CandleSignals::isBearishImpulse($c, $atr)) {
+                $impulse = 'bear';
+            }
+
+            return [
+                'o' => $c->open, 'h' => $c->high, 'l' => $c->low, 'c' => $c->close, 'v' => $c->volume,
+                'compression' => CandleSignals::isCompression($c, $atr),
+                'impulse' => $impulse,
+            ];
+        }, $candles);
+
+        $targetIndex = $this->indexForOpenTime($candles, $targetOpenTime) ?? (count($candles) - 1);
+        $afterCount = count($candles) - 1 - $targetIndex;
+
+        $long = $evaluation->direction === 'LONG';
+        $statusLabel = $evaluation->status === 'completed' ? '100% ВХОД' : "СЕТАП {$evaluation->score}%";
+
+        $spec = [
+            'title' => "{$evaluation->symbol} {$evaluation->interval} — ИСХОД (+{$afterCount} св.) | {$evaluation->strategy} ({$statusLabel})",
+            'candles' => $candleList,
+            'level' => round($evaluation->level, 8),
+            'stop' => $evaluation->stop_price !== null ? round($evaluation->stop_price, 8) : null,
+            'target1' => $evaluation->target1 !== null ? round($evaluation->target1, 8) : null,
+            'target2' => $evaluation->target2 !== null ? round($evaluation->target2, 8) : null,
+            'ema_fast' => array_map(static fn (float $v) => round($v, 8), SeriesMath::ema($closes, 8)),
+            'ema_fast_period' => 8,
+            'ema_slow' => array_map(static fn (float $v) => round($v, 8), SeriesMath::ema($closes, 21)),
+            'ema_slow_period' => 21,
+            'atr' => round($atr, 8),
+            'entry' => [
+                'index' => $targetIndex,
+                'price' => round($evaluation->current_price, 8),
+                'direction' => $long ? 'up' : 'down',
+                'label' => "ТОЧКА СЕТАПА\n{$statusLabel}",
+            ],
+            'exit' => null,
+            'out' => $outPath,
+        ];
+
+        return $spec;
+    }
+
+    /**
      * Assemble the JSON spec consumed by the Python renderer.
      *
      * @param array<int, Candle> $window

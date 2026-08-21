@@ -115,6 +115,54 @@ final class CandleRepository
         ))->all();
     }
 
+    /**
+     * Return a candle window centered around a target open_time ($beforeCount before/at, $afterCount strictly after).
+     * Returns null if fewer than $afterCount candles exist after targetOpenTime.
+     *
+     * @return array<int, CandleDTO>|null
+     */
+    public function windowAround(
+        string $symbol,
+        string $interval,
+        int $targetOpenTime,
+        int $beforeCount = 40,
+        int $afterCount = 30,
+    ): ?array {
+        $afterRows = CandleModel::query()
+            ->where('symbol', $symbol)
+            ->where('interval', $interval)
+            ->where('open_time', '>', $targetOpenTime)
+            ->orderBy('open_time', 'asc')
+            ->limit($afterCount)
+            ->get();
+
+        if ($afterRows->count() < $afterCount) {
+            return null;
+        }
+
+        $beforeRows = CandleModel::query()
+            ->where('symbol', $symbol)
+            ->where('interval', $interval)
+            ->where('open_time', '<=', $targetOpenTime)
+            ->orderByDesc('open_time')
+            ->limit($beforeCount)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $allRows = $beforeRows->concat($afterRows);
+
+        return $allRows->map(static fn (CandleModel $m) => new CandleDTO(
+            openTime: (int) $m->open_time,
+            open: (float) $m->open,
+            high: (float) $m->high,
+            low: (float) $m->low,
+            close: (float) $m->close,
+            volume: (float) $m->volume,
+            closeTime: (int) $m->close_time,
+        ))->all();
+    }
+
     private function has(string $symbol, string $interval): bool
     {
         return CandleModel::query()

@@ -283,16 +283,34 @@ class StrategyEvaluationResource extends Resource
                         ->separator(','),
                 ]),
 
-            Section::make('График сетапа')
+            Section::make('1. График в момент сетапа')
                 ->visible(fn (StrategyEvaluation $record): bool => $record->chart_path !== null)
                 ->schema([
                     \Filament\Infolists\Components\ImageEntry::make('chart_path')
                         ->label('')
                         ->disk('public')
                         ->columnSpanFull()
-                        ->height(500)
-                        ->url(fn (StrategyEvaluation $record): string => asset('storage/'.$record->chart_path))
+                        ->height(450)
+                        ->url(fn (StrategyEvaluation $record): string => '/storage/'.$record->chart_path)
                         ->openUrlInNewTab(),
+                ]),
+
+            Section::make('2. График исхода (+30 свечей)')
+                ->schema([
+                    \Filament\Infolists\Components\ImageEntry::make('outcome_chart_path')
+                        ->label('')
+                        ->disk('public')
+                        ->columnSpanFull()
+                        ->height(450)
+                        ->visible(fn (StrategyEvaluation $record): bool => $record->outcome_chart_path !== null)
+                        ->url(fn (StrategyEvaluation $record): string => '/storage/'.$record->outcome_chart_path)
+                        ->openUrlInNewTab(),
+
+                    TextEntry::make('outcome_status')
+                        ->label('')
+                        ->visible(fn (StrategyEvaluation $record): bool => $record->outcome_chart_path === null)
+                        ->default('⏳ Ожидается закрытие 30 свечей после точки сетапа для построения графика исхода.')
+                        ->color('gray'),
                 ]),
 
             Section::make('Торговый план')

@@ -240,4 +240,113 @@ class StrategyEvaluationTest extends TestCase
         $this->assertStringContainsString("charts/evaluations/eval_{$eval->id}.png", $path);
         $this->assertFileExists(storage_path("app/public/{$path}"));
     }
+
+    public function test_candle_repository_window_around(): void
+    {
+        $repo = app(\App\Market\Repositories\CandleRepository::class);
+        $candles = $this->baseline(50, 100, 150);
+        $repo->persist('BTC-USDT', '5m', $candles);
+
+        $targetTime = $candles[20]->openTime;
+
+        // When requesting 20 after, we have 29 after (index 21 to 49)
+        $window = $repo->windowAround('BTC-USDT', '5m', $targetTime, beforeCount: 15, afterCount: 20);
+        $this->assertNotNull($window);
+        $this->assertCount(35, $window); // 15 before/at + 20 after = 35 candles
+
+        // When requesting 35 after, we only have 29, so it returns null
+        $tooMany = $repo->windowAround('BTC-USDT', '5m', $targetTime, beforeCount: 15, afterCount: 35);
+        $this->assertNull($tooMany);
+    }
+
+    public function test_render_strategy_outcomes_command(): void
+    {
+        $repo = app(\App\Market\Repositories\CandleRepository::class);
+        $candles = $this->baseline(80, 100, 180);
+        $repo->persist('ETH-USDT', '15m', $candles);
+
+        $targetTime = $candles[30]->openTime;
+
+        $eval = StrategyEvaluation::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '15m',
+            'strategy' => 'BounceStrategy',
+            'direction' => 'LONG',
+            'status' => 'completed',
+            'score' => 100.0,
+            'passed_count' => 7,
+            'total_count' => 7,
+            'level' => 100.0,
+            'atr' => 10.0,
+            'current_price' => 130.0,
+            'candle_open_time' => $targetTime,
+            'missing_criteria' => [],
+            'criteria_breakdown' => [],
+            'evaluated_at' => now(),
+        ]);
+
+        $this->assertNull($eval->outcome_chart_path);
+
+        $this->artisan('strategy:render-outcomes', ['--limit' => 10])
+            ->assertSuccessful();
+
+        $eval->refresh();
+        $this->assertNotNull($eval->outcome_chart_path);
+        $this->assertStringContainsString("charts/evaluations/outcome_{$eval->id}.png", $eval->outcome_chart_path);
+        $this->assertFileExists(storage_path("app/public/{$eval->outcome_chart_path}"));
+    }
+
+    public function test_prune_strategy_evaluations_command(): void
+    {
+        // Old evaluation (8 days ago)
+        $oldEval = StrategyEvaluation::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'strategy' => 'BounceStrategy',
+            'direction' => 'SHORT',
+            'status' => 'partial',
+            'score' => 60.0,
+            'passed_count' => 4,
+            'total_count' => 7,
+            'level' => 100.0,
+            'atr' => 5.0,
+            'current_price' => 99.0,
+            'chart_path' => 'charts/evaluations/test_old.png',
+            'evaluated_at' => now()->subDays(8),
+        ]);
+
+        // Create dummy file for old chart
+        \Illuminate\Support\Facades\File::ensureDirectoryExists(storage_path('app/public/charts/evaluations'));
+        \Illuminate\Support\Facades\File::put(storage_path('app/public/charts/evaluations/test_old.png'), 'dummy');
+
+        // Recent evaluation (2 days ago)
+        $recentEval = StrategyEvaluation::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'strategy' => 'BounceStrategy',
+            'direction' => 'SHORT',
+            'status' => 'completed',
+            'score' => 100.0,
+            'passed_count' => 7,
+            'total_count' => 7,
+            'level' => 100.0,
+            'atr' => 5.0,
+            'current_price' => 99.0,
+            'chart_path' => 'charts/evaluations/test_recent.png',
+            'evaluated_at' => now()->subDays(2),
+        ]);
+        \Illuminate\Support\Facades\File::put(storage_path('app/public/charts/evaluations/test_recent.png'), 'dummy');
+
+        $this->artisan('strategy:prune', ['--days' => 7])
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('strategy_evaluations', ['id' => $oldEval->id]);
+        $this->assertFileDoesNotExist(storage_path('app/public/charts/evaluations/test_old.png'));
+
+        $this->assertDatabaseHas('strategy_evaluations', ['id' => $recentEval->id]);
+        $this->assertFileExists(storage_path('app/public/charts/evaluations/test_recent.png'));
+
+        // Clean up test dummy file
+        \Illuminate\Support\Facades\File::delete(storage_path('app/public/charts/evaluations/test_recent.png'));
+    }
 }

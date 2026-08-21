@@ -121,6 +121,8 @@ def main(spec_path, out_override=None):
     if spec.get("entry"):
         e = spec["entry"]
         add_marker(ax, e["index"], e["price"], e["direction"], e["label"])
+        if e["index"] < n - 1:
+            ax.axvline(e["index"], color="#78909c", ls="--", lw=1.2, alpha=0.75, label="Точка сетапа")
     if spec.get("exit"):
         x = spec["exit"]
         add_marker(ax, x["index"], x["price"], x["direction"], x["label"])

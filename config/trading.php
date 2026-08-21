@@ -57,13 +57,9 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Position chart rendering
+    | Position and evaluation chart rendering
     |--------------------------------------------------------------------------
-    | When enabled, each opened/closed position gets a PNG (candles, level,
-    | EMA8/21, entry/exit markers, volume) via scripts/render_position.py.
-    | Requires Python + matplotlib reachable at `python_bin`. In the container
-    | (no Python) leave this off and render specs on the host out-of-band; the
-    | spec JSON is always written regardless.
+    | When enabled, each opened/closed position and evaluation gets a PNG chart.
     */
     'chart' => [
         'enabled' => (bool) env('TRADING_CHART', false),
@@ -71,6 +67,28 @@ return [
         'script' => env('TRADING_CHART_SCRIPT', base_path('scripts/render_position.py')),
         'window' => 60, // candles to plot
         'timeout' => 60,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Outcome chart rendering (post-evaluation follow-up)
+    |--------------------------------------------------------------------------
+    | Generates a follow-up chart after `after_candles` have closed since the setup.
+    */
+    'outcome_chart' => [
+        'enabled' => (bool) env('TRADING_OUTCOME_CHART', true),
+        'after_candles' => (int) env('TRADING_OUTCOME_AFTER_CANDLES', 30),
+        'before_candles' => (int) env('TRADING_OUTCOME_BEFORE_CANDLES', 40),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Data & Charts Retention Cleanup
+    |--------------------------------------------------------------------------
+    | Number of days to keep strategy evaluation records, specs, and chart images.
+    */
+    'cleanup' => [
+        'retention_days' => (int) env('TRADING_RETENTION_DAYS', 7),
     ],
 
 ];
