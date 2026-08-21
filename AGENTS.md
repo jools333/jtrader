@@ -99,4 +99,10 @@ Trading logic is located in `app/Trading/`:
   4. *Impulse Bounce*: trigger candle body $\ge 0.35 \times \text{ATR}$ in the direction of the trade within $0.50 \times \text{ATR}$ entry zone.
   5. *Stop-loss*: placed beyond the pullback swing extrema.
 - **Active Entry Strategies Status**: Currently only `BounceStrategy` is registered as active in `TradingAgent::__construct()`. The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
+- **Strategy Statistics & Diagnostics Logging**:
+  - `BounceStrategy::diagnose()` scores 7 individual criteria (prior impulse, pullback touch, level held, compression, impulse trigger, entry zone, R:R).
+  - All evaluations reaching $\ge 50\%$ criteria match are logged into `strategy_evaluations` table via `StrategyLoggerInterface` / `DatabaseStrategyLogger`.
+  - Records include completion score %, status (`completed` for 100% / `partial` for 50-99%), exact values vs expected thresholds, and human-readable `missing_criteria` list.
+  - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, and `StrategyStatsOverview` widget.
+
 

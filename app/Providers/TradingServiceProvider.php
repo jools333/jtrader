@@ -17,6 +17,9 @@ use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 
+use App\Trading\Contracts\StrategyLoggerInterface;
+use App\Trading\Services\DatabaseStrategyLogger;
+
 /**
  * Wires the trading agent and its order-routing executor.
  *
@@ -28,8 +31,13 @@ class TradingServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(StrategyLoggerInterface::class, fn () => new DatabaseStrategyLogger(
+            minScoreThreshold: (float) config('trading.min_eval_log_score', 50.0),
+        ));
+
         $this->app->singleton(TradingAgentInterface::class, fn (Application $app) => new TradingAgent(
-            (array) config('trading.agent'),
+            config: (array) config('trading.agent'),
+            logger: $app->make(StrategyLoggerInterface::class),
         ));
 
         $this->app->singleton(TradeExecutorInterface::class, function (Application $app): TradeExecutorInterface {

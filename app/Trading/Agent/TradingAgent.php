@@ -68,6 +68,7 @@ final class TradingAgent implements TradingAgentInterface
         ?EntryGuard $guard = null,
         ?array $entryStrategies = null,
         ?array $exitStrategies = null,
+        ?\App\Trading\Contracts\StrategyLoggerInterface $logger = null,
     ) {
         // Инициализация планировщика сделок
         $this->planner = $planner ?? new TradePlanner($this->config);
@@ -76,7 +77,7 @@ final class TradingAgent implements TradingAgentInterface
 
         // Регистрация набора стратегий входа по умолчанию (активна только BounceStrategy)
         $this->entryStrategies = $entryStrategies ?? [
-            new BounceStrategy(),
+            new BounceStrategy($logger),
         ];
 
         // Регистрация набора стратегий выхода в порядке строгого приоритета
@@ -97,6 +98,8 @@ final class TradingAgent implements TradingAgentInterface
         ?float $atr = null,
         ?PositionState $position = null,
         array $recentSignalTypes = [],
+        ?string $symbol = null,
+        ?string $interval = null,
     ): AgentResult {
         // Сбрасываем ключи массива свечей
         $candles = array_values($candles);
@@ -116,7 +119,7 @@ final class TradingAgent implements TradingAgentInterface
         // Создаем снимок текущих значений индикаторов
         $indicators = $this->createIndicatorSnapshot($candles, $atr, $ema8, $ema21, $macd);
         // Создаем объект контекста правил со всеми данными
-        $ctx = new RuleContext($candles, $level, $atr, $ema8, $ema21, $macd);
+        $ctx = new RuleContext($candles, $level, $atr, $ema8, $ema21, $macd, $symbol, $interval);
 
         // Если есть открытая позиция — проверяем стратегии выхода
         $exit = $position !== null ? $this->evaluateExit($ctx, $position) : null;

@@ -33,5 +33,7 @@ interface TradingAgentInterface
         ?float $atr = null,
         ?PositionState $position = null,
         array $recentSignalTypes = [],
+        ?string $symbol = null,
+        ?string $interval = null,
     ): AgentResult;
 }

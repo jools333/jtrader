@@ -34,6 +34,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Strategy evaluation diagnostics & logging
+    |--------------------------------------------------------------------------
+    | Minimum criteria match percentage (0.0 to 100.0) required to log a setup.
+    | 50.0 logs all setups reaching at least 50% criteria completion.
+    */
+    'min_eval_log_score' => (float) env('TRADING_MIN_EVAL_LOG_SCORE', 50.0),
+
+    /*
+    |--------------------------------------------------------------------------
     | Agent rule parameters (all ATR-relative unless noted)
     |--------------------------------------------------------------------------
     */

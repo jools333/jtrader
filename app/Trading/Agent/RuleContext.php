@@ -36,6 +36,8 @@ final class RuleContext
         public readonly array $ema8,
         public readonly array $ema21,
         public readonly array $macd,
+        public readonly ?string $symbol = null,
+        public readonly ?string $interval = null,
     ) {
         $this->n = count($candles);
         $this->i = $this->n - 1;

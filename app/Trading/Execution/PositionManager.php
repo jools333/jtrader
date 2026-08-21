@@ -49,7 +49,7 @@ final class PositionManager
         $state = $open !== null ? $this->toState($open) : null;
         $recent = $open !== null ? [] : $this->recentSignalTypes($symbol, $interval);
 
-        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent);
+        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval);
 
         if ($open !== null && $result->exitSignal !== null) {
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
