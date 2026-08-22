@@ -97,10 +97,12 @@ Trading logic is located in `app/Trading/`:
   2. *Pullback to level*: price returns into level zone ($\le 0.25 \times \text{ATR}$) and holds ($< 0.40 \times \text{ATR}$ penetration).
   3. *Compression*: volume/range deceleration near level.
   4. *Impulse Bounce*: trigger candle body $\ge 0.35 \times \text{ATR}$ in the direction of the trade within $0.50 \times \text{ATR}$ entry zone.
-  5. *Stop-loss*: placed beyond the pullback swing extrema.
+  5. *Trend Alignment (EMA 50)*: entry direction must align with the global trend relative to EMA 50.
+  6. *Volume Confirmation*: trigger candle volume must be $> 1.1 \times$ average volume of the pullback.
+  7. *Stop-loss*: placed beyond the pullback swing extrema.
 - **Active Entry Strategies Status**: Currently only `BounceStrategy` is registered as active in `TradingAgent::__construct()`. The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
 - **Strategy Statistics & Diagnostics Logging**:
-  - `BounceStrategy::diagnose()` scores 7 individual criteria (prior impulse, pullback touch, level held, compression, impulse trigger, entry zone, R:R).
+  - `BounceStrategy::diagnose()` scores 9 individual criteria (prior impulse, pullback touch, level held, compression, impulse trigger, entry zone, trend alignment, volume confirmation, R:R).
   - All evaluations reaching $\ge 50\%$ criteria match are logged into `strategy_evaluations` table via `StrategyLoggerInterface` / `DatabaseStrategyLogger`.
   - Records include completion score %, status (`completed` for 100% / `partial` for 50-99%), exact values vs expected thresholds, human-readable `missing_criteria` list, initial chart (`chart_path`), and follow-up outcome chart (`outcome_chart_path` rendered after 30 candles via `strategy:render-outcomes` scheduler command).
   - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, dual chart view (at setup vs outcome +30 candles), and `StrategyStatsOverview` widget.

@@ -35,6 +35,7 @@ final class RuleContext
         public readonly float $atr,
         public readonly array $ema8,
         public readonly array $ema21,
+        public readonly array $ema50,
         public readonly array $macd,
         public readonly ?string $symbol = null,
         public readonly ?string $interval = null,
@@ -72,6 +73,11 @@ final class RuleContext
     public function ema21At(int $idx): float
     {
         return $this->ema21[$idx] ?? 0.0;
+    }
+
+    public function ema50At(int $idx): float
+    {
+        return $this->ema50[$idx] ?? 0.0;
     }
 
     public function ema8Falling(): bool

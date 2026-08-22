@@ -19,9 +19,9 @@ class PositionManagerTest extends TestCase
 
     private int $t = 1_700_000_000_000;
 
-    private function candle(float $o, float $h, float $l, float $c): Candle
+    private function candle(float $o, float $h, float $l, float $c, float $vol = 1.0): Candle
     {
-        $candle = new Candle($this->t, $o, $h, $l, $c, 1.0, $this->t + 3_599_999);
+        $candle = new Candle($this->t, $o, $h, $l, $c, $vol, $this->t + 3_599_999);
         $this->t += 3_600_000;
 
         return $candle;
@@ -31,8 +31,8 @@ class PositionManagerTest extends TestCase
     private function bounceShortCandles(): array
     {
         $candles = [];
-        $start = 88.0;
-        $end = 97.0;
+        $start = 120.0;
+        $end = 90.0;
         $step = ($end - $start) / 49;
         for ($i = 0; $i < 50; $i++) {
             $c = $start + $step * $i;
@@ -41,7 +41,7 @@ class PositionManagerTest extends TestCase
         $candles[] = $this->candle(99.0, 100.8, 99.3, 100.1);
         $candles[] = $this->candle(100.1, 100.6, 99.4, 99.9);
         $candles[] = $this->candle(99.9, 100.5, 99.2, 100.0);
-        $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2);
+        $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2, 2000);
 
         return $candles;
     }

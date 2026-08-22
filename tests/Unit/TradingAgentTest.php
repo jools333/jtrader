@@ -87,13 +87,13 @@ class TradingAgentTest extends TestCase
     {
         $atr = 10.0;
         $level = 100.0;
-        $candles = $this->baseline(50, 88, 97);
+        $candles = $this->baseline(50, 120, 90);
 
         // Compression candles hugging the level, then a bearish impulse rejecting it.
         $candles[] = $this->candle(99.0, 100.8, 99.3, 100.1);   // compression
         $candles[] = $this->candle(100.1, 100.6, 99.4, 99.9);   // compression (last 3)
         $candles[] = $this->candle(99.9, 100.5, 99.2, 100.0);   // compression (last 3)
-        $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2);   // bearish impulse (last 3)
+        $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2, 2000);   // bearish impulse (last 3)
 
         $result = $this->agent()->evaluate($candles, $level, $atr);
 
@@ -125,7 +125,7 @@ class TradingAgentTest extends TestCase
         $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);  // compression
 
         // 4. Confirmation bounce impulse (open 100.1, close 103.8, body 3.7 >= 3.5 ATR)
-        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8);
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
 
         $result = $this->agent()->evaluate($candles, $level, $atr);
 
@@ -162,7 +162,7 @@ class TradingAgentTest extends TestCase
     {
         $atr = 10.0;
         $level = 100.0;
-        $candles = $this->baseline(50, 88, 97);
+        $candles = $this->baseline(50, 120, 90);
         $candles[] = $this->candle(99.0, 100.8, 99.3, 100.1);
         $candles[] = $this->candle(100.1, 100.6, 99.4, 99.9);
         $candles[] = $this->candle(99.9, 100.5, 99.2, 100.0);

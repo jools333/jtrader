@@ -30,16 +30,14 @@ use App\Trading\Enums\SignalType;
 /**
  * Стратегия входа №1 — Отскок от ключевого уровня (Bounce / Пробой и откат).
  *
- * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 9 критериям Price Action:
+ * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 7 критериям Price Action:
  * 1. Предшествующий импульс / выход за уровень (>= 0.35 ATR);
  * 2. Коррекционный откат в зону уровня (<= 0.25 ATR);
  * 3. Удержание уровня (провал < 0.40 ATR);
  * 4. Затухание волатильности / компрессия на откате (>= 1 свечи);
  * 5. Импульсный отбой от уровня на триггерной свече (тело >= 0.35 ATR);
  * 6. Допустимая зона входа (<= 0.50 ATR от уровня);
- * 7. Фильтр по тренду (EMA 50);
- * 8. Подтверждение объемом на триггерной свече;
- * 9. Коэффициент риск/прибыль (R:R >= min_rr).
+ * 7. Коэффициент риск/прибыль (R:R >= min_rr).
  */
 final class BounceStrategy implements EntryStrategyInterface
 {
@@ -234,39 +232,7 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня (> 0.50 ATR)';
         }
 
-                // 7. Фильтр по тренду
-        $ema50 = $ctx->ema50At($ctx->i);
-        $passedTrend = $ema50 > 0.0 ? ($last->close > $ema50) : true;
-        $criteria['trend_alignment'] = new CriterionResult(
-            key: 'trend_alignment',
-            name: 'Совпадение с глобальным трендом (EMA 50)',
-            passed: $passedTrend,
-            expected: 'Цена > EMA 50',
-            actual: sprintf('Close = %.4f, EMA 50 = %.4f', $last->close, $ema50),
-            actualValue: $last->close,
-            thresholdValue: $ema50,
-        );
-        if (! $passedTrend) {
-            $missing[] = 'Вход против тренда (Цена <= EMA 50)';
-        }
-
-        // 8. Подтверждение объемом
-        $avgVol = CandleSignals::avgVolume($pullbackCandles);
-        $passedVol = $last->volume > $avgVol * 1.1;
-        $criteria['volume_confirmation'] = new CriterionResult(
-            key: 'volume_confirmation',
-            name: 'Подтверждение отскока объемом',
-            passed: $passedVol,
-            expected: 'Объем триггерной свечи > 1.1 * Avg Vol отката',
-            actual: sprintf('Объем = %.1f (Avg = %.1f)', $last->volume, $avgVol),
-            actualValue: $last->volume,
-            thresholdValue: $avgVol * 1.1,
-        );
-        if (! $passedVol) {
-            $missing[] = 'Нет всплеска объема на отскоке';
-        }
-
-        // 9. Торговый план и R:R
+        // 7. Торговый план и R:R
         $stopPrice = $minLow - $atr * 0.10;
         $plan = $planner->plan($ctx, SignalType::Bounce, Direction::Long, false, $stopPrice);
         $passedRr = $plan !== null && $plan->rrRatio >= 2.0;
@@ -446,39 +412,7 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня (> 0.50 ATR)';
         }
 
-                // 7. Фильтр по тренду
-        $ema50 = $ctx->ema50At($ctx->i);
-        $passedTrend = $ema50 > 0.0 ? ($last->close < $ema50) : true;
-        $criteria['trend_alignment'] = new CriterionResult(
-            key: 'trend_alignment',
-            name: 'Совпадение с глобальным трендом (EMA 50)',
-            passed: $passedTrend,
-            expected: 'Цена < EMA 50',
-            actual: sprintf('Close = %.4f, EMA 50 = %.4f', $last->close, $ema50),
-            actualValue: $last->close,
-            thresholdValue: $ema50,
-        );
-        if (! $passedTrend) {
-            $missing[] = 'Вход против тренда (Цена >= EMA 50)';
-        }
-
-        // 8. Подтверждение объемом
-        $avgVol = CandleSignals::avgVolume($pullbackCandles);
-        $passedVol = $last->volume > $avgVol * 1.1;
-        $criteria['volume_confirmation'] = new CriterionResult(
-            key: 'volume_confirmation',
-            name: 'Подтверждение отскока объемом',
-            passed: $passedVol,
-            expected: 'Объем триггерной свечи > 1.1 * Avg Vol отката',
-            actual: sprintf('Объем = %.1f (Avg = %.1f)', $last->volume, $avgVol),
-            actualValue: $last->volume,
-            thresholdValue: $avgVol * 1.1,
-        );
-        if (! $passedVol) {
-            $missing[] = 'Нет всплеска объема на отскоке';
-        }
-
-        // 9. Торговый план и R:R
+        // 7. Торговый план и R:R
         $stopPrice = $maxHigh + $atr * 0.10;
         $plan = $planner->plan($ctx, SignalType::Bounce, Direction::Short, false, $stopPrice);
         $passedRr = $plan !== null && $plan->rrRatio >= 2.0;

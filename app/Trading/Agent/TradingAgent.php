@@ -114,12 +114,13 @@ final class TradingAgent implements TradingAgentInterface
         // Вычисляем индикаторы
         $ema8 = SeriesMath::ema($closes, 8);
         $ema21 = SeriesMath::ema($closes, 21);
+        $ema50 = SeriesMath::ema($closes, 50);
         $macd = SeriesMath::macd($closes, 12, 26, 9);
 
         // Создаем снимок текущих значений индикаторов
-        $indicators = $this->createIndicatorSnapshot($candles, $atr, $ema8, $ema21, $macd);
+        $indicators = $this->createIndicatorSnapshot($candles, $atr, $ema8, $ema21, $ema50, $macd);
         // Создаем объект контекста правил со всеми данными
-        $ctx = new RuleContext($candles, $level, $atr, $ema8, $ema21, $macd, $symbol, $interval);
+        $ctx = new RuleContext($candles, $level, $atr, $ema8, $ema21, $ema50, $macd, $symbol, $interval);
 
         // Если есть открытая позиция — проверяем стратегии выхода
         $exit = $position !== null ? $this->evaluateExit($ctx, $position) : null;
@@ -146,6 +147,7 @@ final class TradingAgent implements TradingAgentInterface
         float $atr,
         array $ema8,
         array $ema21,
+        array $ema50,
         array $macd,
     ): IndicatorSnapshot {
         // Индекс последнего закрытого бара
@@ -155,6 +157,7 @@ final class TradingAgent implements TradingAgentInterface
         return new IndicatorSnapshot(
             ema8: $ema8[$i] ?? 0.0,
             ema21: $ema21[$i] ?? 0.0,
+            ema50: $ema50[$i] ?? 0.0,
             macdLine: $macd['line'][$i] ?? 0.0,
             macdSignal: $macd['signal'][$i] ?? 0.0,
             macdHist: $macd['histogram'][$i] ?? 0.0,

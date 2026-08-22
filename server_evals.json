@@ -1,0 +1,499 @@
+[
+    {
+        "id": 162,
+        "symbol": "DOGE-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 0.084305,
+        "atr": 0.00052158,
+        "current_price": 0.08425,
+        "entry_price": 0.08425,
+        "stop_price": 0.08482658,
+        "target1": 0.08309684,
+        "target2": 0.08194368,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 0.0841 (L - 0.35 ATR)",
+                "actual": "0.0826 (-3.27 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 0.0842 (L - 0.25 ATR)",
+                "actual": "0.0845 (+0.30 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 0.0845 (не выше L + 0.40 ATR)",
+                "actual": "0.0845 (+0.30 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "2 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 0.0002 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 0.0002 (0.38 ATR), Close: 0.0843"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 0.0840 (L - 0.50 ATR)",
+                "actual": "Close = 0.0843 (-0.11 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 0.0006, Стоп: 0.0848)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787305800000,
+        "chart_path": "charts\/evaluations\/eval_162.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-21T09:51:04.000000Z",
+        "created_at": "2026-08-21T09:51:04.000000Z",
+        "updated_at": "2026-08-21T09:51:09.000000Z"
+    },
+    {
+        "id": 215,
+        "symbol": "ETH-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 2374.90333333,
+        "atr": 12.35173379,
+        "current_price": 2368.78,
+        "entry_price": 2368.78,
+        "stop_price": 2387.25506712,
+        "target1": 2331.82986576,
+        "target2": 2294.87973152,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 2370.5802 (L - 0.35 ATR)",
+                "actual": "2356.7100 (-1.47 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 2371.8154 (L - 0.25 ATR)",
+                "actual": "2379.1300 (+0.34 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 2379.8440 (не выше L + 0.40 ATR)",
+                "actual": "2379.1300 (+0.34 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "1 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 4.3231 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 4.8500 (0.39 ATR), Close: 2368.7800"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 2368.7275 (L - 0.50 ATR)",
+                "actual": "Close = 2368.7800 (-0.50 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 18.4751, Стоп: 2387.2551)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787312700000,
+        "chart_path": "charts\/evaluations\/eval_215.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-21T11:50:03.000000Z",
+        "created_at": "2026-08-21T11:50:03.000000Z",
+        "updated_at": "2026-08-21T11:50:07.000000Z"
+    },
+    {
+        "id": 630,
+        "symbol": "BNB-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 681.15666667,
+        "atr": 1.42071338,
+        "current_price": 680.45,
+        "entry_price": 680.45,
+        "stop_price": 682.57738005,
+        "target1": 676.1952399,
+        "target2": 671.9404798,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 680.6594 (L - 0.35 ATR)",
+                "actual": "674.0400 (-5.01 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 680.8015 (L - 0.25 ATR)",
+                "actual": "681.6400 (+0.34 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 681.7250 (не выше L + 0.40 ATR)",
+                "actual": "681.6400 (+0.34 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "3 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 0.4972 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 0.5800 (0.41 ATR), Close: 680.4500"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 680.4463 (L - 0.50 ATR)",
+                "actual": "Close = 680.4500 (-0.50 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 2.1274, Стоп: 682.5774)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787332200000,
+        "chart_path": "charts\/evaluations\/eval_630.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-21T17:11:43.000000Z",
+        "created_at": "2026-08-21T17:11:43.000000Z",
+        "updated_at": "2026-08-21T17:11:49.000000Z"
+    },
+    {
+        "id": 841,
+        "symbol": "DOGE-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 0.084228,
+        "atr": 0.00038012,
+        "current_price": 0.08411,
+        "entry_price": 0.08411,
+        "stop_price": 0.08460812,
+        "target1": 0.08311376,
+        "target2": 0.08211752,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 0.0841 (L - 0.35 ATR)",
+                "actual": "0.0837 (-1.44 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 0.0841 (L - 0.25 ATR)",
+                "actual": "0.0844 (+0.35 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 0.0844 (не выше L + 0.40 ATR)",
+                "actual": "0.0844 (+0.35 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "0 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 0.0001 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 0.0002 (0.50 ATR), Close: 0.0841"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 0.0840 (L - 0.50 ATR)",
+                "actual": "Close = 0.0841 (-0.31 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 0.0005, Стоп: 0.0846)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787338800000,
+        "chart_path": "charts\/evaluations\/eval_841.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-21T19:01:11.000000Z",
+        "created_at": "2026-08-21T19:01:11.000000Z",
+        "updated_at": "2026-08-21T19:01:15.000000Z"
+    },
+    {
+        "id": 898,
+        "symbol": "LINK-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 11.641,
+        "atr": 0.05470447,
+        "current_price": 11.616,
+        "entry_price": 11.616,
+        "stop_price": 11.69570447,
+        "target1": 11.45659106,
+        "target2": 11.29718212,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 11.6219 (L - 0.35 ATR)",
+                "actual": "11.4700 (-3.13 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 11.6273 (L - 0.25 ATR)",
+                "actual": "11.6590 (+0.33 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 11.6629 (не выше L + 0.40 ATR)",
+                "actual": "11.6590 (+0.33 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "5 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 0.0191 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 0.0230 (0.42 ATR), Close: 11.6160"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 11.6136 (L - 0.50 ATR)",
+                "actual": "Close = 11.6160 (-0.46 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 0.0797, Стоп: 11.6957)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787339700000,
+        "chart_path": "charts\/evaluations\/eval_898.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-21T19:16:10.000000Z",
+        "created_at": "2026-08-21T19:16:10.000000Z",
+        "updated_at": "2026-08-21T19:16:15.000000Z"
+    },
+    {
+        "id": 1145,
+        "symbol": "XRP-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 1.40133333,
+        "atr": 0.00691126,
+        "current_price": 1.3994,
+        "entry_price": 1.3994,
+        "stop_price": 1.40824459,
+        "target1": 1.38171082,
+        "target2": 1.36402164,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 1.3989 (L - 0.35 ATR)",
+                "actual": "1.3638 (-5.43 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 1.3996 (L - 0.25 ATR)",
+                "actual": "1.4026 (+0.18 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 1.4041 (не выше L + 0.40 ATR)",
+                "actual": "1.4026 (+0.18 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "2 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 0.0024 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 0.0026 (0.38 ATR), Close: 1.3994"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 1.3979 (L - 0.50 ATR)",
+                "actual": "Close = 1.3994 (-0.28 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 0.0088, Стоп: 1.4082)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787348100000,
+        "chart_path": "charts\/evaluations\/eval_1145.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-21T21:36:05.000000Z",
+        "created_at": "2026-08-21T21:36:05.000000Z",
+        "updated_at": "2026-08-21T21:36:09.000000Z"
+    },
+    {
+        "id": 1267,
+        "symbol": "ETH-USDT",
+        "interval": "5m",
+        "strategy": "BounceStrategy",
+        "direction": "SHORT",
+        "status": "completed",
+        "score": 100,
+        "passed_count": 7,
+        "total_count": 7,
+        "level": 2527.305,
+        "atr": 7.25575545,
+        "current_price": 2524.02,
+        "entry_price": 2524.02,
+        "stop_price": 2534.56075545,
+        "target1": 2502.9384891,
+        "target2": 2481.8569782,
+        "rr_ratio": 4,
+        "missing_criteria": [],
+        "criteria_breakdown": {
+            "prior_trough": {
+                "name": "Предшествующий импульс ниже уровня",
+                "passed": true,
+                "expected": "<= 2524.7655 (L - 0.35 ATR)",
+                "actual": "2504.0000 (-3.21 ATR)"
+            },
+            "pullback_touch": {
+                "name": "Касание зоны сопротивления на откате",
+                "passed": true,
+                "expected": ">= 2525.4911 (L - 0.25 ATR)",
+                "actual": "2529.3300 (+0.28 ATR)"
+            },
+            "level_held": {
+                "name": "Удержание уровня сопротивления",
+                "passed": true,
+                "expected": "<= 2530.2073 (не выше L + 0.40 ATR)",
+                "actual": "2529.3300 (+0.28 ATR)"
+            },
+            "compression": {
+                "name": "Компрессия волатильности на откате",
+                "passed": true,
+                "expected": ">= 1 свечи сжатия \/ узкого бара",
+                "actual": "1 свечей сжатия (+ узкий бар)"
+            },
+            "impulse_trigger": {
+                "name": "Импульсный отбой от уровня",
+                "passed": true,
+                "expected": "Медвежье тело >= 2.5395 (0.35 ATR), Close < L",
+                "actual": "Медвежье тело 3.4300 (0.47 ATR), Close: 2524.0200"
+            },
+            "entry_zone": {
+                "name": "Вход в допустимой зоне цены",
+                "passed": true,
+                "expected": "Close >= 2523.6771 (L - 0.50 ATR)",
+                "actual": "Close = 2524.0200 (-0.45 ATR от уровня)"
+            },
+            "risk_reward": {
+                "name": "Коэффициент прибыль\/риск (R:R)",
+                "passed": true,
+                "expected": "R:R >= 2.0 и корректный стоп",
+                "actual": "R:R = 1:4.00 (Риск: 10.5408, Стоп: 2534.5608)"
+            }
+        },
+        "indicators": null,
+        "candle_open_time": 1787373900000,
+        "chart_path": "charts\/evaluations\/eval_1267.png",
+        "outcome_chart_path": null,
+        "evaluated_at": "2026-08-22T04:46:37.000000Z",
+        "created_at": "2026-08-22T04:46:37.000000Z",
+        "updated_at": "2026-08-22T04:46:41.000000Z"
+    }
+]

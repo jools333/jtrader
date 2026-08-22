@@ -24,9 +24,9 @@ class StrategyEvaluationTest extends TestCase
 
     private int $t = 1_700_000_000_000;
 
-    private function candle(float $o, float $h, float $l, float $c): Candle
+    private function candle(float $o, float $h, float $l, float $c, float $vol = 1.0): Candle
     {
-        $candle = new Candle($this->t, $o, $h, $l, $c, 1.0, $this->t + 3_599_999);
+        $candle = new Candle($this->t, $o, $h, $l, $c, $vol, $this->t + 3_599_999);
         $this->t += 3_600_000;
 
         return $candle;
@@ -64,7 +64,7 @@ class StrategyEvaluationTest extends TestCase
         $candles[] = $this->candle(100.5, 101.2, 100.4, 101.0);
 
         $strategy = new BounceStrategy();
-        $ctx = new RuleContext($candles, $level, $atr, [], [], ['line' => [], 'signal' => [], 'histogram' => []], 'BTC-USDT', '5m');
+        $ctx = new RuleContext($candles, $level, $atr, [], [], [], ['line' => [], 'signal' => [], 'histogram' => []], 'BTC-USDT', '5m');
         $planner = new TradePlanner();
 
         $diag = $strategy->diagnose($ctx, $planner);
@@ -87,7 +87,7 @@ class StrategyEvaluationTest extends TestCase
             direction: Direction::Long,
             score: 71.4,
             passedCount: 5,
-            totalCount: 7,
+            totalCount: 9,
             isFullSignal: false,
             entrySignal: null,
             level: 100.0,
@@ -112,7 +112,7 @@ class StrategyEvaluationTest extends TestCase
             'direction' => 'LONG',
             'status' => 'partial',
             'passed_count' => 5,
-            'total_count' => 7,
+            'total_count' => 9,
         ]);
 
         $eval = StrategyEvaluation::first();
@@ -130,7 +130,7 @@ class StrategyEvaluationTest extends TestCase
             direction: Direction::Long,
             score: 28.5,
             passedCount: 2,
-            totalCount: 7,
+            totalCount: 9,
             isFullSignal: false,
             entrySignal: null,
             level: 100.0,
@@ -159,7 +159,7 @@ class StrategyEvaluationTest extends TestCase
         $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8);
         $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);
         $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
-        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8); // 100% full signal
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000); // 100% full signal
 
         $agent = app(TradingAgent::class);
         $result = $agent->evaluate($candles, $level, $atr, null, [], 'BTC-USDT', '5m');
@@ -184,8 +184,8 @@ class StrategyEvaluationTest extends TestCase
             'direction' => 'LONG',
             'status' => 'completed',
             'score' => 100.0,
-            'passed_count' => 7,
-            'total_count' => 7,
+            'passed_count' => 9,
+            'total_count' => 9,
             'level' => 100.0,
             'atr' => 10.0,
             'current_price' => 103.8,
@@ -216,8 +216,8 @@ class StrategyEvaluationTest extends TestCase
             'direction' => 'LONG',
             'status' => 'completed',
             'score' => 100.0,
-            'passed_count' => 7,
-            'total_count' => 7,
+            'passed_count' => 9,
+            'total_count' => 9,
             'level' => 100.0,
             'atr' => 10.0,
             'current_price' => 103.8,
@@ -274,8 +274,8 @@ class StrategyEvaluationTest extends TestCase
             'direction' => 'LONG',
             'status' => 'completed',
             'score' => 100.0,
-            'passed_count' => 7,
-            'total_count' => 7,
+            'passed_count' => 9,
+            'total_count' => 9,
             'level' => 100.0,
             'atr' => 10.0,
             'current_price' => 130.0,
@@ -307,7 +307,7 @@ class StrategyEvaluationTest extends TestCase
             'status' => 'partial',
             'score' => 60.0,
             'passed_count' => 4,
-            'total_count' => 7,
+            'total_count' => 9,
             'level' => 100.0,
             'atr' => 5.0,
             'current_price' => 99.0,
@@ -327,8 +327,8 @@ class StrategyEvaluationTest extends TestCase
             'direction' => 'SHORT',
             'status' => 'completed',
             'score' => 100.0,
-            'passed_count' => 7,
-            'total_count' => 7,
+            'passed_count' => 9,
+            'total_count' => 9,
             'level' => 100.0,
             'atr' => 5.0,
             'current_price' => 99.0,
