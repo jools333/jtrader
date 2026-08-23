@@ -30,7 +30,7 @@ use App\Trading\Enums\SignalType;
 /**
  * Стратегия входа №1 — Отскок от ключевого уровня (Bounce / Пробой и откат).
  *
- * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 9 критериям Price Action:
+ * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 11 критериям Price Action:
  * 1. Предшествующий импульс / выход за уровень (>= 0.35 ATR);
  * 2. Коррекционный откат в зону уровня (<= 0.25 ATR);
  * 3. Удержание уровня (провал < 0.40 ATR);
@@ -39,7 +39,9 @@ use App\Trading\Enums\SignalType;
  * 6. Допустимая зона входа (<= 0.50 ATR от уровня);
  * 7. Фильтр по тренду (EMA 50);
  * 8. Подтверждение объемом на триггерной свече;
- * 9. Коэффициент риск/прибыль (R:R >= min_rr).
+ * 9. Отсутствие агрессивного подхода (Momentum Exhaustion);
+ * 10. Прокол уровня / Пин-бар на отбое;
+ * 11. Коэффициент риск/прибыль (R:R >= min_rr).
  */
 final class BounceStrategy implements EntryStrategyInterface
 {
@@ -266,7 +268,53 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Нет всплеска объема на отскоке';
         }
 
-        // 9. Торговый план и R:R
+                // 9. Отсутствие агрессивного подхода (Momentum Thrust Filter)
+        $aggressive = false;
+        $pullbackCount2 = count($pullbackCandles);
+        $recentPullback = array_slice($pullbackCandles, max(0, $pullbackCount2 - 3));
+        foreach ($recentPullback as $pc) {
+            if ($pc->close < $pc->open && CandleSignals::body($pc) > $atr * 0.7) {
+                $aggressive = true;
+                break;
+            }
+        }
+        $passedExhaustion = !$aggressive;
+        $criteria['momentum_exhaustion'] = new CriterionResult(
+            key: 'momentum_exhaustion',
+            name: 'Отсутствие агрессивного подхода',
+            passed: $passedExhaustion,
+            expected: 'Тела свечей отката < 0.7 ATR',
+            actual: $aggressive ? 'Обнаружена аномально большая свеча отката' : 'Плавный подход',
+            actualValue: $aggressive ? 1.0 : 0.0,
+            thresholdValue: 0.0,
+        );
+        if (! $passedExhaustion) {
+            $missing[] = 'Агрессивный подход (Momentum Thrust)';
+        }
+
+        // 10. Прокол уровня / Пин-бар
+        // Триггерная или предыдущая свеча должна касаться зоны L + 0.1 ATR
+        $prev = $m > 1 ? $window[$m - 2] : $last;
+        $testedLevel = $last->low <= $level + $atr * 0.15 || $prev->low <= $level + $atr * 0.15;
+        // Тень снизу у триггера
+        $lowerWick = min($last->open, $last->close) - $last->low;
+        $isPinBar = $lowerWick >= CandleSignals::body($last) * 0.5;
+        
+        $passedWick = $testedLevel && ($isPinBar || $last->close > $level);
+        $criteria['wick_rejection'] = new CriterionResult(
+            key: 'wick_rejection',
+            name: 'Прокол уровня (Пин-бар / Тест)',
+            passed: $passedWick,
+            expected: 'Тест L+0.15 ATR и откуп (тень)',
+            actual: sprintf('Low: %.4f, Тень: %.4f', $last->low, $lowerWick),
+            actualValue: $last->low,
+            thresholdValue: $level + $atr * 0.15,
+        );
+        if (! $passedWick) {
+            $missing[] = 'Нет явного прокола или тени откупа';
+        }
+
+        // 11. Торговый план и R:R
         $stopPrice = $minLow - $atr * 0.10;
         $plan = $planner->plan($ctx, SignalType::Bounce, Direction::Long, false, $stopPrice);
         $passedRr = $plan !== null && $plan->rrRatio >= 2.0;
@@ -478,7 +526,53 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Нет всплеска объема на отскоке';
         }
 
-        // 9. Торговый план и R:R
+                // 9. Отсутствие агрессивного подхода (Momentum Thrust Filter)
+        $aggressive = false;
+        $pullbackCount2 = count($pullbackCandles);
+        $recentPullback = array_slice($pullbackCandles, max(0, $pullbackCount2 - 3));
+        foreach ($recentPullback as $pc) {
+            if ($pc->close > $pc->open && CandleSignals::body($pc) > $atr * 0.7) {
+                $aggressive = true;
+                break;
+            }
+        }
+        $passedExhaustion = !$aggressive;
+        $criteria['momentum_exhaustion'] = new CriterionResult(
+            key: 'momentum_exhaustion',
+            name: 'Отсутствие агрессивного подхода',
+            passed: $passedExhaustion,
+            expected: 'Тела свечей отката < 0.7 ATR',
+            actual: $aggressive ? 'Обнаружена аномально большая свеча отката' : 'Плавный подход',
+            actualValue: $aggressive ? 1.0 : 0.0,
+            thresholdValue: 0.0,
+        );
+        if (! $passedExhaustion) {
+            $missing[] = 'Агрессивный подход (Momentum Thrust)';
+        }
+
+        // 10. Прокол уровня / Пин-бар
+        // Триггерная или предыдущая свеча должна касаться зоны L - 0.15 ATR
+        $prev = $m > 1 ? $window[$m - 2] : $last;
+        $testedLevel = $last->high >= $level - $atr * 0.15 || $prev->high >= $level - $atr * 0.15;
+        // Тень сверху у триггера
+        $upperWick = $last->high - max($last->open, $last->close);
+        $isPinBar = $upperWick >= CandleSignals::body($last) * 0.5;
+        
+        $passedWick = $testedLevel && ($isPinBar || $last->close < $level);
+        $criteria['wick_rejection'] = new CriterionResult(
+            key: 'wick_rejection',
+            name: 'Прокол уровня (Пин-бар / Тест)',
+            passed: $passedWick,
+            expected: 'Тест L-0.15 ATR и отторжение (тень)',
+            actual: sprintf('High: %.4f, Тень: %.4f', $last->high, $upperWick),
+            actualValue: $last->high,
+            thresholdValue: $level - $atr * 0.15,
+        );
+        if (! $passedWick) {
+            $missing[] = 'Нет явного прокола или тени отторжения';
+        }
+
+        // 11. Торговый план и R:R
         $stopPrice = $maxHigh + $atr * 0.10;
         $plan = $planner->plan($ctx, SignalType::Bounce, Direction::Short, false, $stopPrice);
         $passedRr = $plan !== null && $plan->rrRatio >= 2.0;
