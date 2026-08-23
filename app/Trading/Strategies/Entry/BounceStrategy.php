@@ -67,7 +67,7 @@ final class BounceStrategy implements EntryStrategyInterface
             $this->logger->log($eval);
         }
 
-        return $eval->isFullSignal ? $eval->entrySignal : null;
+        return $eval->score >= 70.0 ? $eval->entrySignal : null;
     }
 
     /**
@@ -343,7 +343,7 @@ final class BounceStrategy implements EntryStrategyInterface
             passedCount: $passed,
             totalCount: $total,
             isFullSignal: $isFull,
-            entrySignal: $isFull ? $plan : null,
+            entrySignal: $score >= 70.0 ? $plan : null,
             level: $level,
             atr: $atr,
             currentPrice: $last->close,
@@ -601,7 +601,7 @@ final class BounceStrategy implements EntryStrategyInterface
             passedCount: $passed,
             totalCount: $total,
             isFullSignal: $isFull,
-            entrySignal: $isFull ? $plan : null,
+            entrySignal: $score >= 70.0 ? $plan : null,
             level: $level,
             atr: $atr,
             currentPrice: $last->close,
