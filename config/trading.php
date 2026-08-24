@@ -47,6 +47,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'agent' => [
+        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 90.0),
         'min_rr' => 2.0,          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)

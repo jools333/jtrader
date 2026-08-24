@@ -48,7 +48,7 @@ final class BounceStrategy implements EntryStrategyInterface
     /** Глубина анализируемого окна свечей */
     private const int LOOKBACK = 25;
 
-    public function __construct(private readonly ?StrategyLoggerInterface $logger = null)
+    public function __construct(private readonly ?StrategyLoggerInterface $logger = null, private readonly float $minEntryScore = 90.0)
     {
     }
 
@@ -67,7 +67,7 @@ final class BounceStrategy implements EntryStrategyInterface
             $this->logger->log($eval);
         }
 
-        return $eval->score >= 70.0 ? $eval->entrySignal : null;
+        return $eval->score >= $this->minEntryScore ? $eval->entrySignal : null;
     }
 
     /**
@@ -343,7 +343,7 @@ final class BounceStrategy implements EntryStrategyInterface
             passedCount: $passed,
             totalCount: $total,
             isFullSignal: $isFull,
-            entrySignal: $score >= 70.0 ? $plan : null,
+            entrySignal: $score >= $this->minEntryScore ? $plan : null,
             level: $level,
             atr: $atr,
             currentPrice: $last->close,
@@ -601,7 +601,7 @@ final class BounceStrategy implements EntryStrategyInterface
             passedCount: $passed,
             totalCount: $total,
             isFullSignal: $isFull,
-            entrySignal: $score >= 70.0 ? $plan : null,
+            entrySignal: $score >= $this->minEntryScore ? $plan : null,
             level: $level,
             atr: $atr,
             currentPrice: $last->close,
