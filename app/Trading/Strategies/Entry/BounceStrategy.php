@@ -30,18 +30,19 @@ use App\Trading\Enums\SignalType;
 /**
  * Стратегия входа №1 — Отскок от ключевого уровня (Bounce / Пробой и откат).
  *
- * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 11 критериям Price Action:
+ * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 12 критериям Price Action:
  * 1. Предшествующий импульс / выход за уровень (>= 0.35 ATR);
  * 2. Коррекционный откат в зону уровня (<= 0.25 ATR);
  * 3. Удержание уровня (провал < 0.40 ATR);
  * 4. Затухание волатильности / компрессия на откате (>= 1 свечи);
  * 5. Импульсный отбой от уровня на триггерной свече (тело >= 0.35 ATR);
  * 6. Допустимая зона входа (<= 0.50 ATR от уровня);
- * 7. Фильтр по тренду (EMA 50);
+ * 7. Фильтр по тренду (EMA 50 + буфер 0.10 ATR + наклон EMA50);
  * 8. Подтверждение объемом на триггерной свече;
  * 9. Отсутствие агрессивного подхода (Momentum Exhaustion);
  * 10. Прокол уровня / Пин-бар на отбое;
- * 11. Коэффициент риск/прибыль (R:R >= min_rr).
+ * 11. Коэффициент риск/прибыль (R:R >= min_rr);
+ * 12. Подтверждение MACD (гистограмма в направлении сделки).
  */
 final class BounceStrategy implements EntryStrategyInterface
 {
@@ -236,20 +237,21 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня (> 0.50 ATR)';
         }
 
-                // 7. Фильтр по тренду
+                // 7. Фильтр по тренду (усиленный: цена выше EMA50 + буфер, наклон EMA50 растёт)
         $ema50 = $ctx->ema50At($ctx->i);
-        $passedTrend = $ema50 > 0.0 ? ($last->close > $ema50) : true;
+        $ema50Slope = $ctx->i >= 3 ? ($ctx->ema50At($ctx->i) - $ctx->ema50At($ctx->i - 3)) : 0.0;
+        $passedTrend = $ema50 > 0.0 ? ($last->close > $ema50 + $atr * 0.10 && $ema50Slope > 0) : true;
         $criteria['trend_alignment'] = new CriterionResult(
             key: 'trend_alignment',
             name: 'Совпадение с глобальным трендом (EMA 50)',
             passed: $passedTrend,
-            expected: 'Цена > EMA 50',
-            actual: sprintf('Close = %.4f, EMA 50 = %.4f', $last->close, $ema50),
+            expected: sprintf('Цена > EMA50 + 0.10 ATR (%.4f) и наклон EMA50 > 0', $ema50 + $atr * 0.10),
+            actual: sprintf('Close = %.4f, EMA 50 = %.4f, Slope = %+.6f', $last->close, $ema50, $ema50Slope),
             actualValue: $last->close,
-            thresholdValue: $ema50,
+            thresholdValue: $ema50 + $atr * 0.10,
         );
         if (! $passedTrend) {
-            $missing[] = 'Вход против тренда (Цена <= EMA 50)';
+            $missing[] = 'Вход против тренда (Цена <= EMA 50 + буфер или EMA50 падает)';
         }
 
         // 8. Подтверждение объемом
@@ -329,6 +331,22 @@ final class BounceStrategy implements EntryStrategyInterface
         );
         if (! $passedRr) {
             $missing[] = 'Коэффициент R:R < 2.0 или некорректный стоп';
+        }
+
+        // 12. Подтверждение MACD (гистограмма в направлении сделки)
+        $macdHist = $ctx->macdHistAt($ctx->i);
+        $passedMacd = $macdHist > 0;
+        $criteria['macd_alignment'] = new CriterionResult(
+            key: 'macd_alignment',
+            name: 'Подтверждение MACD (гистограмма)',
+            passed: $passedMacd,
+            expected: 'MACD гистограмма > 0 (бычий импульс)',
+            actual: sprintf('MACD hist = %+.6f', $macdHist),
+            actualValue: $macdHist,
+            thresholdValue: 0.0,
+        );
+        if (! $passedMacd) {
+            $missing[] = 'MACD гистограмма отрицательная (медвежий импульс)';
         }
 
         $total = count($criteria);
@@ -494,20 +512,21 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня (> 0.50 ATR)';
         }
 
-                // 7. Фильтр по тренду
+                // 7. Фильтр по тренду (усиленный: цена ниже EMA50 - буфер, наклон EMA50 падает)
         $ema50 = $ctx->ema50At($ctx->i);
-        $passedTrend = $ema50 > 0.0 ? ($last->close < $ema50) : true;
+        $ema50Slope = $ctx->i >= 3 ? ($ctx->ema50At($ctx->i) - $ctx->ema50At($ctx->i - 3)) : 0.0;
+        $passedTrend = $ema50 > 0.0 ? ($last->close < $ema50 - $atr * 0.10 && $ema50Slope < 0) : true;
         $criteria['trend_alignment'] = new CriterionResult(
             key: 'trend_alignment',
             name: 'Совпадение с глобальным трендом (EMA 50)',
             passed: $passedTrend,
-            expected: 'Цена < EMA 50',
-            actual: sprintf('Close = %.4f, EMA 50 = %.4f', $last->close, $ema50),
+            expected: sprintf('Цена < EMA50 - 0.10 ATR (%.4f) и наклон EMA50 < 0', $ema50 - $atr * 0.10),
+            actual: sprintf('Close = %.4f, EMA 50 = %.4f, Slope = %+.6f', $last->close, $ema50, $ema50Slope),
             actualValue: $last->close,
-            thresholdValue: $ema50,
+            thresholdValue: $ema50 - $atr * 0.10,
         );
         if (! $passedTrend) {
-            $missing[] = 'Вход против тренда (Цена >= EMA 50)';
+            $missing[] = 'Вход против тренда (Цена >= EMA 50 - буфер или EMA50 растёт)';
         }
 
         // 8. Подтверждение объемом
@@ -587,6 +606,22 @@ final class BounceStrategy implements EntryStrategyInterface
         );
         if (! $passedRr) {
             $missing[] = 'Коэффициент R:R < 2.0 или некорректный стоп';
+        }
+
+        // 12. Подтверждение MACD (гистограмма в направлении сделки)
+        $macdHist = $ctx->macdHistAt($ctx->i);
+        $passedMacd = $macdHist < 0;
+        $criteria['macd_alignment'] = new CriterionResult(
+            key: 'macd_alignment',
+            name: 'Подтверждение MACD (гистограмма)',
+            passed: $passedMacd,
+            expected: 'MACD гистограмма < 0 (медвежий импульс)',
+            actual: sprintf('MACD hist = %+.6f', $macdHist),
+            actualValue: $macdHist,
+            thresholdValue: 0.0,
+        );
+        if (! $passedMacd) {
+            $missing[] = 'MACD гистограмма положительная (бычий импульс)';
         }
 
         $total = count($criteria);

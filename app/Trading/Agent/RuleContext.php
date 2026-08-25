@@ -80,6 +80,11 @@ final class RuleContext
         return $this->ema50[$idx] ?? 0.0;
     }
 
+    public function macdHistAt(int $idx): float
+    {
+        return $this->macd['histogram'][$idx] ?? 0.0;
+    }
+
     public function ema8Falling(): bool
     {
         return $this->ema8At($this->i) < $this->ema8At($this->i - 1);
