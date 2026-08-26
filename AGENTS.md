@@ -28,6 +28,11 @@ Run artisan/composer/tests **inside the container** (`docker compose exec app â€
 
 Run a single test: `docker compose exec app php artisan test --filter=MarketDashboardTest`.
 
+## Deployment & CI/CD
+
+Deployment to the remote server (`root@jools.com.ru:/home/jools/jtrader`) is fully automated.
+**It is sufficient to commit and push changes to git (`main` branch)** â€” the configured CI/CD pipeline automatically pulls and deploys all updates to the server. Manual SSH deployment commands are not needed for normal workflow.
+
 ## Architecture (the parts that span multiple files)
 
 Everything market-related lives under `app/Market/` behind two interfaces, both bound in
