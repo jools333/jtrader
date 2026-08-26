@@ -116,4 +116,17 @@ Trading logic is located in `app/Trading/`:
   - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, dual chart view (at setup vs outcome +30 candles), and `StrategyStatsOverview` widget.
   - Data Retention & Pruning: `strategy:prune` daily scheduler command deletes evaluations, chart images, and specs older than 7 days (`TRADING_RETENTION_DAYS=7`).
 
+## Real Trade Statistics & Performance Verification via BingX API
+
+**Always verify actual trading results, fills, win rate, and realized PnL via BingX API**, rather than relying solely on the local `positions` database table.
+
+- **Why**: When positions open, `BingXTradeExecutor` attaches native exchange bracket orders (`takeProfit` / `stopLoss`). BingX executes TP/SL orders on the orderbook automatically. The exchange is the true source of truth for executions, fills, realized PnL, commissions, and funding fees.
+- **BingX Private API Endpoints**:
+  - Income & Realized PnL: `GET /openApi/swap/v2/user/income` (returns `REALIZED_PNL`, `TRADING_FEE`, `FUNDING_FEE` with timestamps and exact PnL).
+  - All Orders / Fills: `GET /openApi/swap/v2/trade/allOrders` & `GET /openApi/swap/v2/trade/allFills`.
+  - Open Positions: `GET /openApi/swap/v2/user/positions`.
+  - Account Balance: `GET /openApi/swap/v2/user/balance`.
+- **API Credentials**: Configured in `.env` (`EXCHANGE_BINGX_API_KEY`, `EXCHANGE_BINGX_API_SECRET`, `config('exchange.drivers.bingx')`). Outbound requests are signed with HMAC-SHA256.
+- **How to inspect**: Run queries via Tinker or artisan command using `Http::baseUrl(...)` with `X-BX-APIKEY` header and timestamped HMAC signature.
+
 
