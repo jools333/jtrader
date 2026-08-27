@@ -87,13 +87,20 @@ class TradingAgentTest extends TestCase
     {
         $atr = 10.0;
         $level = 100.0;
-        $candles = $this->baseline(50, 120, 90);
-
-        // Compression candles hugging the level, then a bearish impulse rejecting it.
-        $candles[] = $this->candle(99.0, 100.8, 99.3, 100.1);   // compression
-        $candles[] = $this->candle(100.1, 100.6, 99.4, 99.9);   // compression (last 3)
-        $candles[] = $this->candle(99.9, 100.5, 99.2, 100.0);   // compression (last 3)
-        $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2, 2000);   // bearish impulse (last 3)
+        $candles = [];
+        for ($i = 0; $i < 48; $i++) {
+            $c = 110.0 - (10.0 / 47.0) * $i;
+            $candles[] = $this->candle($c - 0.1, $c + 0.5, $c - 0.5, $c);
+        }
+        // Prior impulse down through 100 to 93.5
+        $candles[] = $this->candle(100.0, 100.2, 93.8, 94.0);
+        $candles[] = $this->candle(94.0, 94.5, 93.0, 93.5);
+        // Pullback into zone with compression
+        $candles[] = $this->candle(94.0, 97.5, 93.8, 97.0);
+        $candles[] = $this->candle(97.0, 99.8, 96.8, 99.5);
+        $candles[] = $this->candle(99.5, 100.5, 99.0, 99.8);
+        // Trigger candle rejecting level
+        $candles[] = $this->candle(99.8, 100.5, 94.5, 95.0, 2000.0);
 
         $result = $this->agent()->evaluate($candles, $level, $atr);
 

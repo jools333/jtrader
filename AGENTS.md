@@ -97,20 +97,25 @@ and Filament pagination — it is compiled in the Dockerfile via `docker-php-ext
 
 Trading logic is located in `app/Trading/`:
 - **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window.
-- **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector (~20-25 candles lookback) with EMA/MACD confirmation:
-  1. *Breakout / Impulse Peak*: checks prior move beyond level ($\ge 0.35 \times \text{ATR}$).
-  2. *Pullback to level*: price returns into level zone ($\le 0.25 \times \text{ATR}$) and holds ($< 0.40 \times \text{ATR}$ penetration).
-  3. *Compression*: volume/range deceleration near level.
-  4. *Impulse Bounce*: trigger candle body $\ge 0.35 \times \text{ATR}$ in the direction of the trade within $0.50 \times \text{ATR}$ entry zone.
-  5. *Trend Alignment (EMA 50)*: entry direction must align with the global trend — price must be beyond EMA 50 + $0.10 \times \text{ATR}$ buffer AND EMA 50 slope must confirm direction (rising for LONG, falling for SHORT over last 3 bars).
-  6. *Volume Confirmation*: trigger candle volume must be $> 1.1 \times$ average volume of the pullback.
-  7. *Momentum Exhaustion*: pullback phase must not contain massive momentum candles ($> 0.7 \times \text{ATR}$).
-  8. *Wick Rejection / Pin Bar*: trigger candle (or previous) must pierce/touch the level (within $0.15 \times \text{ATR}$) and show rejection.
-  9. *Stop-loss*: placed beyond the pullback swing extrema.
-  10. *MACD Alignment*: MACD histogram must be in the direction of the trade (positive for LONG, negative for SHORT).
+- **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector (~20-25 candles lookback) with dual-layer Hard/Soft criteria:
+  - **Hard Filters (100% strictly mandatory for entry)**:
+    1. *Trend Alignment (EMA 50)*: entry direction must align with global trend — price beyond EMA 50 + $0.10 \times \text{ATR}$ buffer AND EMA 50 slope confirms direction (rising for LONG, falling for SHORT over last 3 bars).
+    2. *MACD Alignment*: MACD histogram in trade direction ($> 0$ for LONG, $< 0$ for SHORT).
+    3. *Entry Zone*: entry close within $0.50 \times \text{ATR}$ of key level.
+    4. *Risk / Reward*: calculated setup $R:R \ge 2.0$ ($T1=2R, T2=4R$).
+  - **Soft Price Action Criteria (8 scored conditions)**:
+    1. *Breakout / Impulse Peak*: move beyond level ($\ge 0.35 \times \text{ATR}$).
+    2. *Pullback to level*: returns into level zone ($\le 0.25 \times \text{ATR}$).
+    3. *Level Held*: penetration $< 0.40 \times \text{ATR}$.
+    4. *Compression*: volume/range deceleration near level ($\ge 1$ bars).
+    5. *Impulse Bounce*: trigger candle body $\ge 0.35 \times \text{ATR}$.
+    6. *Volume Confirmation*: trigger volume $> 1.1 \times$ pullback avg volume.
+    7. *Momentum Exhaustion*: no aggressive pullback candles ($> 0.70 \times \text{ATR}$).
+    8. *Wick Rejection / Pin Bar*: level touch/pierce within $0.15 \times \text{ATR}$ and rejection wick.
+  - *Entry Rule*: All 4 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 83.33% = 10/12 criteria).
 - **Active Entry Strategies Status**: Currently only `BounceStrategy` is registered as active in `TradingAgent::__construct()`. The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
 - **Strategy Statistics & Diagnostics Logging**:
-  - `BounceStrategy::diagnose()` scores 12 individual criteria (prior impulse, pullback touch, level held, compression, impulse trigger, entry zone, trend alignment, volume confirmation, momentum exhaustion, wick rejection, R:R, MACD alignment).
+  - `BounceStrategy::diagnose()` scores 12 individual criteria (4 hard + 8 soft).
   - All evaluations reaching $\ge 50\%$ criteria match are logged into `strategy_evaluations` table via `StrategyLoggerInterface` / `DatabaseStrategyLogger`.
   - Records include completion score %, status (`completed` for 100% / `partial` for 50-99%), exact values vs expected thresholds, human-readable `missing_criteria` list, initial chart (`chart_path`), and follow-up outcome chart (`outcome_chart_path` rendered after 30 candles via `strategy:render-outcomes` scheduler command).
   - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, dual chart view (at setup vs outcome +30 candles), and `StrategyStatsOverview` widget.

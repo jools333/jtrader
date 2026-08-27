@@ -30,26 +30,38 @@ use App\Trading\Enums\SignalType;
 /**
  * Стратегия входа №1 — Отскок от ключевого уровня (Bounce / Пробой и откат).
  *
- * Алгоритм анализирует глубокую историю свечей (20-30 баров) по 12 критериям Price Action:
- * 1. Предшествующий импульс / выход за уровень (>= 0.35 ATR);
- * 2. Коррекционный откат в зону уровня (<= 0.25 ATR);
- * 3. Удержание уровня (провал < 0.40 ATR);
- * 4. Затухание волатильности / компрессия на откате (>= 1 свечи);
- * 5. Импульсный отбой от уровня на триггерной свече (тело >= 0.35 ATR);
- * 6. Допустимая зона входа (<= 0.50 ATR от уровня);
- * 7. Фильтр по тренду (EMA 50 + буфер 0.10 ATR + наклон EMA50);
- * 8. Подтверждение объемом на триггерной свече;
- * 9. Отсутствие агрессивного подхода (Momentum Exhaustion);
- * 10. Прокол уровня / Пин-бар на отбое;
- * 11. Коэффициент риск/прибыль (R:R >= min_rr);
- * 12. Подтверждение MACD (гистограмма в направлении сделки).
+ * Двухуровневая модель оценки:
+ *
+ * 1. Обязательные (Hard) фильтры — 100% прохождение строго необходимо для входа:
+ *    - trend_alignment: совпадение с трендом EMA 50 + буфер 0.10 ATR + наклон EMA 50;
+ *    - macd_alignment: гистограмма MACD по направлению сделки (> 0 для LONG, < 0 для SHORT);
+ *    - entry_zone: цена входа в пределах 0.50 ATR от уровня;
+ *    - risk_reward: математический потенциал R:R >= min_rr (>= 2.0).
+ *
+ * 2. Балльные (Soft) критерии Price Action (8 условий):
+ *    - prior_peak / prior_trough: предшествующий импульс (>= 0.35 ATR);
+ *    - pullback_touch: откат в зону уровня (<= 0.25 ATR);
+ *    - level_held: удержание уровня (провал < 0.40 ATR);
+ *    - compression: компрессия на откате (>= 1 свечи);
+ *    - impulse_trigger: импульсный отбой на триггерной свече (тело >= 0.35 ATR);
+ *    - volume_confirmation: подтверждение всплеском объема (> 1.1x avg);
+ *    - momentum_exhaustion: отсутствие агрессивных контр-свечей (< 0.70 ATR);
+ *    - wick_rejection: прокол уровня / пин-бар с откупом.
  */
 final class BounceStrategy implements EntryStrategyInterface
 {
     /** Глубина анализируемого окна свечей */
     private const int LOOKBACK = 25;
 
-    public function __construct(private readonly ?StrategyLoggerInterface $logger = null, private readonly float $minEntryScore = 90.0)
+    /** Обязательные (Hard) критерии: при непрохождении любого из них вход строго блокируется */
+    private const array HARD_CRITERIA = [
+        'trend_alignment',
+        'macd_alignment',
+        'entry_zone',
+        'risk_reward',
+    ];
+
+    public function __construct(private readonly ?StrategyLoggerInterface $logger = null, private readonly float $minEntryScore = 83.33)
     {
     }
 
@@ -354,6 +366,14 @@ final class BounceStrategy implements EntryStrategyInterface
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
+        $passedHard = true;
+        foreach (self::HARD_CRITERIA as $hardKey) {
+            if (! ($criteria[$hardKey]->passed ?? false)) {
+                $passedHard = false;
+                break;
+            }
+        }
+
         return new StrategyEvaluationResult(
             strategy: 'BounceStrategy',
             direction: Direction::Long,
@@ -361,7 +381,7 @@ final class BounceStrategy implements EntryStrategyInterface
             passedCount: $passed,
             totalCount: $total,
             isFullSignal: $isFull,
-            entrySignal: $score >= $this->minEntryScore ? $plan : null,
+            entrySignal: ($passedHard && $score >= $this->minEntryScore) ? $plan : null,
             level: $level,
             atr: $atr,
             currentPrice: $last->close,
@@ -629,6 +649,14 @@ final class BounceStrategy implements EntryStrategyInterface
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
+        $passedHard = true;
+        foreach (self::HARD_CRITERIA as $hardKey) {
+            if (! ($criteria[$hardKey]->passed ?? false)) {
+                $passedHard = false;
+                break;
+            }
+        }
+
         return new StrategyEvaluationResult(
             strategy: 'BounceStrategy',
             direction: Direction::Short,
@@ -636,7 +664,7 @@ final class BounceStrategy implements EntryStrategyInterface
             passedCount: $passed,
             totalCount: $total,
             isFullSignal: $isFull,
-            entrySignal: $score >= $this->minEntryScore ? $plan : null,
+            entrySignal: ($passedHard && $score >= $this->minEntryScore) ? $plan : null,
             level: $level,
             atr: $atr,
             currentPrice: $last->close,

@@ -31,17 +31,19 @@ class PositionManagerTest extends TestCase
     private function bounceShortCandles(): array
     {
         $candles = [];
-        $start = 120.0;
-        $end = 90.0;
-        $step = ($end - $start) / 49;
-        for ($i = 0; $i < 50; $i++) {
-            $c = $start + $step * $i;
-            $candles[] = $this->candle($c - 0.1, $c + 1, $c - 1, $c);
+        for ($i = 0; $i < 48; $i++) {
+            $c = 110.0 - (10.0 / 47.0) * $i;
+            $candles[] = $this->candle($c - 0.1, $c + 0.5, $c - 0.5, $c);
         }
-        $candles[] = $this->candle(99.0, 100.8, 99.3, 100.1);
-        $candles[] = $this->candle(100.1, 100.6, 99.4, 99.9);
-        $candles[] = $this->candle(99.9, 100.5, 99.2, 100.0);
-        $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2, 2000);
+        // Prior impulse down through 100 to 93.5
+        $candles[] = $this->candle(100.0, 100.2, 93.8, 94.0);
+        $candles[] = $this->candle(94.0, 94.5, 93.0, 93.5);
+        // Pullback into zone with compression
+        $candles[] = $this->candle(94.0, 97.5, 93.8, 97.0);
+        $candles[] = $this->candle(97.0, 99.8, 96.8, 99.5);
+        $candles[] = $this->candle(99.5, 100.5, 99.0, 99.8);
+        // Trigger candle rejecting level
+        $candles[] = $this->candle(99.8, 100.5, 94.5, 95.0, 2000.0);
 
         return $candles;
     }
