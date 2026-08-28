@@ -98,22 +98,23 @@ class PositionManagerTest extends TestCase
         $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
     }
 
-    public function test_open_position_is_closed_on_stop_loss(): void
+    public function test_open_position_is_closed_on_target(): void
     {
         $manager = $this->manager();
         $manager->process('BTC-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
         $position = Position::first();
 
-        // Price rallies through the protective stop (above resistance for a short).
-        $stop = $position->stop_price;
+        // Price drops to the target (Target1).
+        $target = $position->target1;
         $candles = $this->bounceShortCandles();
-        $candles[] = $this->candle($stop, $stop + 2, $stop - 1, $stop + 1);
+        $candles[] = $this->candle($target + 1, $target + 2, $target - 1, $target);
 
         $manager->process('BTC-USDT', '1h', $candles, 100.0, 10.0);
 
         $position->refresh();
         $this->assertSame(Position::STATUS_CLOSED, $position->status);
-        $this->assertSame('STOP_LOSS', $position->exit_type);
+        // It could be Target2 or Target1 depending on evaluation order, both are equal.
+        $this->assertContains($position->exit_type, ['TARGET1', 'TARGET2']);
         $this->assertNotNull($position->closed_at);
     }
 }

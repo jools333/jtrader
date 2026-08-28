@@ -34,6 +34,10 @@ final class StopLossStrategy implements ExitStrategyInterface
         // Если уже был взят Target 1, используем цену входа как безубыточный стоп, иначе исходный стоп
         $stop = $position->breakevenSet ? $position->entryPrice : $position->stopPrice;
 
+        if ($stop <= 0.0) {
+            return null;
+        }
+
         // Проверяем факт пробития уровня стоп-лосса ценой
         $triggered = $isLong ? ($price <= $stop) : ($price >= $stop);
 

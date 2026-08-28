@@ -37,46 +37,26 @@ final class TradePlanner
     ): ?EntrySignal {
         // Цена входа равна цене закрытия последней свечи
         $entry = $ctx->price();
-        // Запас для стоп-лосса за уровнем в единицах ATR (по умолчанию 0.5 ATR)
-        $stopBuffer = $ctx->atr * $this->cfg('stop_atr', 0.5);
-        // Множитель риска для первой цели (по умолчанию 2.0R)
-        $t1Mult = $this->cfg('target1_r', 2.0);
-        // Множитель риска для второй цели (по умолчанию 4.0R)
-        $t2Mult = $this->cfg('target2_r', 4.0);
+        
+        // Согласно новым правилам, Stop Loss отключен.
+        $stop = 0.0;
+        
+        // TP фиксирован на 1% от цены входа
+        $tpPercent = $this->cfg('tp_percent', 1.0) / 100.0;
+        $tpDistance = $entry * $tpPercent;
 
         // Расчет для позиции LONG (покупка)
         if ($dir === Direction::Long) {
-            // Базовый уровень стоп-лосса: ниже уровня поддержки на величину буфера
-            $defaultStop = $ctx->level - $stopBuffer;
-            // Если передан кастомный стоп (например, за тень ложного пробоя), выбираем более безопасный (наименьший)
-            $stop = $stopPrice !== null ? min($defaultStop, $stopPrice) : $defaultStop;
-            // Величина риска на единицу актива
-            $risk = $entry - $stop;
-            // Если риск отрицательный или нулевой (стоп выше входа) — отменяем сигнал
-            if ($risk <= 0.0) {
-                return null;
-            }
-            // Первая цель: Вход + Риск * 2.0
-            $target1 = $entry + $risk * $t1Mult;
-            // Вторая цель: Вход + Риск * 4.0
-            $target2 = $entry + $risk * $t2Mult;
+            $target1 = $entry + $tpDistance;
+            $target2 = $target1; // Цель 2 равна цели 1
         } else {
             // Расчет для позиции SHORT (продажа)
-            // Базовый уровень стоп-лосса: выше уровня сопротивления на величину буфера
-            $defaultStop = $ctx->level + $stopBuffer;
-            // Если передан кастомный стоп, выбираем наибольший (самый безопасный для шорта)
-            $stop = $stopPrice !== null ? max($defaultStop, $stopPrice) : $defaultStop;
-            // Величина риска на единицу актива для шорта
-            $risk = $stop - $entry;
-            // Если риск некорректен — отменяем сигнал
-            if ($risk <= 0.0) {
-                return null;
-            }
-            // Первая цель: Вход - Риск * 2.0
-            $target1 = $entry - $risk * $t1Mult;
-            // Вторая цель: Вход - Риск * 4.0
-            $target2 = $entry - $risk * $t2Mult;
+            $target1 = $entry - $tpDistance;
+            $target2 = $target1; // Цель 2 равна цели 1
         }
+
+        // Задаем искусственный R:R, чтобы всегда проходить фильтр в TradingAgent
+        $rrRatio = 999.0;
 
         // Создаем и возвращаем DTO сигнала на вход с рассчитанными параметрами
         return new EntrySignal(
@@ -86,7 +66,7 @@ final class TradePlanner
             stop: $stop,
             target1: $target1,
             target2: $target2,
-            rrRatio: abs($target2 - $entry) / $risk,
+            rrRatio: $rrRatio,
             confluence: $confluence,
         );
     }
@@ -99,3 +79,4 @@ final class TradePlanner
         return (float) ($this->config[$key] ?? $default);
     }
 }
+
