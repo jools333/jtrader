@@ -42,7 +42,7 @@ final class TradePlanner
         $stop = 0.0;
         
         // TP фиксирован на процент от цены входа (по умолчанию 0.2% для 5m таймфрейма, так как 1% недостижим)
-        $tpPercent = $this->cfg('tp_percent', 0.2) / 100.0;
+        $tpPercent = $this->cfg('tp_percent', 0.1) / 100.0;
         $tpDistance = $entry * $tpPercent;
 
         // Расчет для позиции LONG (покупка)

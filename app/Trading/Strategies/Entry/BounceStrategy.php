@@ -111,14 +111,14 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 3. Нормальный уровень ATR
-        $minAtr = $last->close * 0.003;
+        $minAtr = $last->close * 0.001;
         $passedNormalAtr = $atr > $minAtr;
         
         $criteria['normal_atr'] = new CriterionResult(
             key: 'normal_atr',
             name: 'Нормальный уровень ATR',
             passed: $passedNormalAtr,
-            expected: sprintf('ATR > %.4f (%%.2f%%%% от цены)', $minAtr, 0.3),
+            expected: sprintf('ATR > %.4f (0.1%%%% от цены)', $minAtr),
             actual: sprintf('ATR = %.4f', $atr),
             actualValue: $atr,
             thresholdValue: $minAtr,
@@ -201,14 +201,14 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 3. Нормальный уровень ATR
-        $minAtr = $last->close * 0.003;
+        $minAtr = $last->close * 0.001;
         $passedNormalAtr = $atr > $minAtr;
         
         $criteria['normal_atr'] = new CriterionResult(
             key: 'normal_atr',
             name: 'Нормальный уровень ATR',
             passed: $passedNormalAtr,
-            expected: sprintf('ATR > %.4f (%%.2f%%%% от цены)', $minAtr, 0.3),
+            expected: sprintf('ATR > %.4f (0.1%%%% от цены)', $minAtr),
             actual: sprintf('ATR = %.4f', $atr),
             actualValue: $atr,
             thresholdValue: $minAtr,
