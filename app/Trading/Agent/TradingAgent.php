@@ -77,7 +77,14 @@ final class TradingAgent implements TradingAgentInterface
 
         // Регистрация набора стратегий входа по умолчанию (активна только BounceStrategy)
         $this->entryStrategies = $entryStrategies ?? [
-            new BounceStrategy($logger, (float) ($this->config['min_entry_score'] ?? 90.0)),
+            new BounceStrategy(
+                logger: $logger,
+                minEntryScore: (float) ($this->config['min_entry_score'] ?? 90.0),
+                lookbackCandles: (int) ($this->config['bounce_lookback_candles'] ?? 10),
+                levelApproachAtr: (float) ($this->config['bounce_level_approach_atr'] ?? 0.50),
+                bounceReversalAtr: (float) ($this->config['bounce_reversal_atr'] ?? 0.10),
+                minAtrPercent: (float) ($this->config['bounce_min_atr_percent'] ?? 0.20),
+            ),
         ];
 
         // Регистрация набора стратегий выхода в порядке строгого приоритета

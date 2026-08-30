@@ -54,6 +54,17 @@ return [
         'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
         'target1_r' => 2.0,       // target 1 at 2R
         'target2_r' => 4.0,       // target 2 at 4R
+        
+        // Настройки BounceStrategy
+        'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
+        'bounce_level_approach_atr' => 0.50, // Допустимая зона от уровня (в ATR)
+        'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
+        'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
+        
+        // Настройки тейк-профита и комиссий
+        'tp_percent' => 0.10,             // Желаемый чистый профит в процентах от цены (без учета комиссий)
+        'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
+        'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)
     ],
 
     /*

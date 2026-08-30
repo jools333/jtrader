@@ -20,12 +20,15 @@ use App\Trading\Enums\SignalType;
  */
 final class BounceStrategy implements EntryStrategyInterface
 {
-    private const int LOOKBACK = 10;
-
     public function __construct(
-        private readonly ?StrategyLoggerInterface $logger = null, 
-        private readonly float $minEntryScore = 100.0
-    ) {}
+        private readonly ?StrategyLoggerInterface $logger = null,
+        private readonly float $minEntryScore = 100.0,
+        private readonly int $lookbackCandles = 10,
+        private readonly float $levelApproachAtr = 0.50,
+        private readonly float $bounceReversalAtr = 0.10,
+        private readonly float $minAtrPercent = 0.20,
+    ) {
+    }
 
     public function evaluate(RuleContext $ctx, TradePlanner $planner): ?EntrySignal
     {
@@ -43,11 +46,11 @@ final class BounceStrategy implements EntryStrategyInterface
 
     public function diagnose(RuleContext $ctx, TradePlanner $planner): ?StrategyEvaluationResult
     {
-        if ($ctx->n < self::LOOKBACK || $ctx->atr <= 0.0) {
+        if ($ctx->n < $this->lookbackCandles || $ctx->atr <= 0.0) {
             return null;
         }
 
-        $lookback = min($ctx->n, self::LOOKBACK);
+        $lookback = min($ctx->n, $this->lookbackCandles);
         $window = $ctx->slice($lookback);
         $last = $window[count($window) - 1];
 
@@ -78,13 +81,13 @@ final class BounceStrategy implements EntryStrategyInterface
         // 1. Подход к уровню поддержки
         $minLow = min(array_map(static fn (Candle $c) => $c->low, $window));
         // Зона поддержки: от L - 0.5 ATR до L + 0.5 ATR
-        $passedApproach = $minLow <= $level + $atr * 0.50 && $minLow >= $level - $atr * 0.50;
+        $passedApproach = $minLow <= $level + $atr * $this->levelApproachAtr && $minLow >= $level - $atr * $this->levelApproachAtr;
         
         $criteria['level_approach'] = new CriterionResult(
             key: 'level_approach',
             name: 'Подход к уровню поддержки',
             passed: $passedApproach,
-            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * 0.50, $level + $atr * 0.50),
+            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->levelApproachAtr, $level + $atr * $this->levelApproachAtr),
             actual: sprintf('%.4f', $minLow),
             actualValue: $minLow,
             thresholdValue: $level,
@@ -94,7 +97,7 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 2. Отбой на 10% от ATR вверх от минимальной цены
-        $reqBounce = $minLow + $atr * 0.10;
+        $reqBounce = $minLow + $atr * $this->bounceReversalAtr;
         $passedBounce = $last->close >= $reqBounce;
         
         $criteria['atr_bounce'] = new CriterionResult(
@@ -111,14 +114,14 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 3. Нормальный уровень ATR
-        $minAtr = $last->close * 0.002;
+        $minAtr = $last->close * ($this->minAtrPercent / 100.0);
         $passedNormalAtr = $atr > $minAtr;
         
         $criteria['normal_atr'] = new CriterionResult(
             key: 'normal_atr',
             name: 'Нормальный уровень ATR',
             passed: $passedNormalAtr,
-            expected: sprintf('ATR > %.4f (0.2%%%% от цены)', $minAtr),
+            expected: sprintf('ATR > %.4f (%.2f%%%% от цены)', $minAtr, $this->minAtrPercent),
             actual: sprintf('ATR = %.4f', $atr),
             actualValue: $atr,
             thresholdValue: $minAtr,
@@ -168,13 +171,13 @@ final class BounceStrategy implements EntryStrategyInterface
         // 1. Подход к уровню сопротивления
         $maxHigh = max(array_map(static fn (Candle $c) => $c->high, $window));
         // Зона сопротивления: от L - 0.5 ATR до L + 0.5 ATR
-        $passedApproach = $maxHigh >= $level - $atr * 0.50 && $maxHigh <= $level + $atr * 0.50;
+        $passedApproach = $maxHigh >= $level - $atr * $this->levelApproachAtr && $maxHigh <= $level + $atr * $this->levelApproachAtr;
         
         $criteria['level_approach'] = new CriterionResult(
             key: 'level_approach',
             name: 'Подход к уровню сопротивления',
             passed: $passedApproach,
-            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * 0.50, $level + $atr * 0.50),
+            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->levelApproachAtr, $level + $atr * $this->levelApproachAtr),
             actual: sprintf('%.4f', $maxHigh),
             actualValue: $maxHigh,
             thresholdValue: $level,
@@ -184,7 +187,7 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 2. Отбой на 10% от ATR вниз от максимальной цены
-        $reqBounce = $maxHigh - $atr * 0.10;
+        $reqBounce = $maxHigh - $atr * $this->bounceReversalAtr;
         $passedBounce = $last->close <= $reqBounce;
         
         $criteria['atr_bounce'] = new CriterionResult(
@@ -201,14 +204,14 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 3. Нормальный уровень ATR
-        $minAtr = $last->close * 0.002;
+        $minAtr = $last->close * ($this->minAtrPercent / 100.0);
         $passedNormalAtr = $atr > $minAtr;
         
         $criteria['normal_atr'] = new CriterionResult(
             key: 'normal_atr',
             name: 'Нормальный уровень ATR',
             passed: $passedNormalAtr,
-            expected: sprintf('ATR > %.4f (0.2%%%% от цены)', $minAtr),
+            expected: sprintf('ATR > %.4f (%.2f%%%% от цены)', $minAtr, $this->minAtrPercent),
             actual: sprintf('ATR = %.4f', $atr),
             actualValue: $atr,
             thresholdValue: $minAtr,
