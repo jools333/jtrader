@@ -41,9 +41,16 @@ final class TradePlanner
         // Согласно новым правилам, Stop Loss отключен.
         $stop = 0.0;
         
-        // TP фиксирован на процент от цены входа (по умолчанию 0.2% для 5m таймфрейма, так как 1% недостижим)
+        // TP фиксирован на процент от цены входа (по умолчанию 0.1% чистой прибыли)
         $tpPercent = $this->cfg('tp_percent', 0.1) / 100.0;
-        $tpDistance = $entry * $tpPercent;
+        
+        // Учитываем комиссии BingX. Вход обычно Taker (по рынку), выход TP - Maker (лимитка).
+        $makerFee = $this->cfg('fee_maker_percent', 0.02) / 100.0;
+        $takerFee = $this->cfg('fee_taker_percent', 0.05) / 100.0;
+        $totalFeePercent = $takerFee + $makerFee; // 0.07%
+        
+        // Итоговая дистанция включает желаемый профит и компенсацию комиссий
+        $tpDistance = $entry * ($tpPercent + $totalFeePercent);
 
         // Расчет для позиции LONG (покупка)
         if ($dir === Direction::Long) {
