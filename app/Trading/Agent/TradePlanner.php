@@ -38,13 +38,14 @@ final class TradePlanner
         // Цена входа равна цене закрытия последней свечи
         $entry = $ctx->price();
         
-        // Согласно новым правилам, Stop Loss отключен.
-        $stop = 0.0;
+        // Защитный "катастрофический" стоп-лосс на случай краха рынка
+        $stopPct = $this->cfg('catastrophic_stop_percent', 2.0) / 100.0;
         
-        // TP фиксирован на процент от цены входа (по умолчанию 0.1% чистой прибыли)
+        // TP фиксирован на процент от цены входа (по умолчанию 0.1% чистой прибыли для первой цели)
         $tpPercent = $this->cfg('tp_percent', 0.1) / 100.0;
+        $tpMultiplier = $this->cfg('tp_multiplier', 2.0);
         
-        // Учитываем комиссии BingX. Вход обычно Taker (по рынку), выход TP - Maker (лимитка).
+        // Учитываем комиссии BingX. Вход теперь LIMIT (Maker), выход TP - MARKET (Taker)
         $makerFee = $this->cfg('fee_maker_percent', 0.02) / 100.0;
         $takerFee = $this->cfg('fee_taker_percent', 0.05) / 100.0;
         $totalFeePercent = $takerFee + $makerFee; // 0.07%
@@ -54,12 +55,14 @@ final class TradePlanner
 
         // Расчет для позиции LONG (покупка)
         if ($dir === Direction::Long) {
+            $stop = $entry - ($entry * $stopPct);
             $target1 = $entry + $tpDistance;
-            $target2 = $target1; // Цель 2 равна цели 1
+            $target2 = $entry + ($tpDistance * $tpMultiplier);
         } else {
             // Расчет для позиции SHORT (продажа)
+            $stop = $entry + ($entry * $stopPct);
             $target1 = $entry - $tpDistance;
-            $target2 = $target1; // Цель 2 равна цели 1
+            $target2 = $entry - ($tpDistance * $tpMultiplier);
         }
 
         // Задаем искусственный R:R, чтобы всегда проходить фильтр в TradingAgent

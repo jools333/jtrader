@@ -25,7 +25,7 @@ return [
     | max_quantity — hard cap after the calculation (0 = no cap).
     |   Per-symbol minimum lot size is enforced by the exchange, not here.
     */
-    'risk_percent'     => (float) env('TRADING_RISK_PCT', 1.0),
+    'risk_percent'     => (float) env('TRADING_RISK_PCT', 2.0),
     'paper_balance'    => (float) env('TRADING_PAPER_BALANCE', 1_000.0),
     'max_quantity'     => (float) env('TRADING_MAX_QTY', 0.0),
     // Hard cap: notional position value ≤ X% of balance (0 = disabled).
@@ -61,8 +61,10 @@ return [
         'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         
-        // Настройки тейк-профита и комиссий
-        'tp_percent' => 0.10,             // Желаемый чистый профит в процентах от цены (без учета комиссий)
+        // Настройки тейк-профита, комиссий и защитного стопа
+        'tp_percent' => 0.10,             // Чистый профит Target 1 (50% объема) в процентах от цены
+        'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
+        'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
         'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)
     ],

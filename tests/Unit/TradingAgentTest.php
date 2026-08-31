@@ -107,9 +107,9 @@ class TradingAgentTest extends TestCase
         $this->assertNotNull($result->entrySignal);
         $this->assertSame(SignalType::Bounce, $result->entrySignal->type);
         $this->assertSame(Direction::Short, $result->entrySignal->direction);
-        $this->assertEquals(0.0, $result->entrySignal->stop);
+        $this->assertGreaterThan(0.0, $result->entrySignal->stop);
         $this->assertLessThan($result->entrySignal->entryPrice, $result->entrySignal->target1);
-        $this->assertEquals($result->entrySignal->target1, $result->entrySignal->target2);
+        $this->assertNotEquals($result->entrySignal->target1, $result->entrySignal->target2);
     }
 
     public function test_bounce_long_breakout_pullback_retest_pattern(): void
@@ -138,9 +138,9 @@ class TradingAgentTest extends TestCase
         $this->assertNotNull($result->entrySignal);
         $this->assertSame(SignalType::Bounce, $result->entrySignal->type);
         $this->assertSame(Direction::Long, $result->entrySignal->direction);
-        $this->assertEquals(0.0, $result->entrySignal->stop);
+        $this->assertGreaterThan(0.0, $result->entrySignal->stop);
         $this->assertGreaterThan($result->entrySignal->entryPrice, $result->entrySignal->target1);
-        $this->assertEquals($result->entrySignal->target1, $result->entrySignal->target2);
+        $this->assertNotEquals($result->entrySignal->target1, $result->entrySignal->target2);
     }
 
     public function test_duplicate_signal_type_is_suppressed(): void

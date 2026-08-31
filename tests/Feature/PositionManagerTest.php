@@ -105,7 +105,7 @@ class PositionManagerTest extends TestCase
         $position = Position::first();
 
         // Price drops to the target (Target1).
-        $target = $position->target1;
+        $target = $position->target2;
         $candles = $this->bounceShortCandles();
         $candles[] = $this->candle($target + 1, $target + 2, $target - 1, $target);
 
@@ -114,7 +114,7 @@ class PositionManagerTest extends TestCase
         $position->refresh();
         $this->assertSame(Position::STATUS_CLOSED, $position->status);
         // It could be Target2 or Target1 depending on evaluation order, both are equal.
-        $this->assertContains($position->exit_type, ['TARGET1', 'TARGET2']);
+        $this->assertContains($position->exit_type, ['TARGET2']);
         $this->assertNotNull($position->closed_at);
     }
 }

@@ -62,7 +62,8 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
-            'type' => 'MARKET',
+            'type' => 'LIMIT',
+            'price' => $signal->entryPrice,
             'quantity' => $quantity,
             // Server-side protective orders so the position is covered even if
             // the agent process dies between bars.
