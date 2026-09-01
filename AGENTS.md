@@ -135,3 +135,7 @@ Trading logic is located in `app/Trading/`:
 - **How to inspect**: Run queries via Tinker or artisan command using `Http::baseUrl(...)` with `X-BX-APIKEY` header and timestamped HMAC signature.
 
 
+
+## Checking Trade Statistics
+Real trade statistics (positions, PnL) should be checked on the production server via SSH:
+`ssh jools@jools.com.ru` -> `/home/jools/jtrader`

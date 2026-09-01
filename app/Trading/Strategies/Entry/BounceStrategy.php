@@ -220,6 +220,25 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
+        // 4. Строгий фильтр тренда для SHORT (EMA8 должна падать, цена ниже EMA50)
+        $passedTrend = $ctx->ema8Falling() && $last->close < $ctx->ema50At($ctx->i);
+        
+        $criteria['strict_trend'] = new CriterionResult(
+            key: 'strict_trend',
+            name: 'Тренд вниз (EMA8 падает, цена < EMA50)',
+            passed: $passedTrend,
+            expected: 'EMA8 падает, цена < EMA50',
+            actual: sprintf('EMA8 Falling: %s, Price %.4f vs EMA50 %.4f', 
+                $ctx->ema8Falling() ? 'Yes' : 'No', 
+                $last->close, 
+                $ctx->ema50At($ctx->i)),
+            actualValue: $last->close,
+            thresholdValue: $ctx->ema50At($ctx->i),
+        );
+        if (! $passedTrend) {
+            $missing[] = 'Против тренда (EMA не подтверждает падение)';
+        }
+
         $total = count($criteria);
         $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
