@@ -63,7 +63,7 @@ class PositionManagerTest extends TestCase
 
     public function test_entry_signal_is_logged_as_an_open_position(): void
     {
-        $result = $this->manager()->process('BTC-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $result = $this->manager()->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
 
         $this->assertNotNull($result->entrySignal);
         $this->assertDatabaseCount('positions', 1);
@@ -85,7 +85,7 @@ class PositionManagerTest extends TestCase
         // balance=1000, risk_pct=1% → risk_amount = 10 USDT.
         // expected qty = 10 / 6.8 ≈ 1.4706, rounded to 4dp.
         $result = $this->manager(paperBalance: 1_000.0, riskPct: 1.0)
-            ->process('BTC-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+            ->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
 
         $this->assertNotNull($result->entrySignal);
         $position = Position::first();
@@ -101,7 +101,7 @@ class PositionManagerTest extends TestCase
     public function test_open_position_is_closed_on_target(): void
     {
         $manager = $this->manager();
-        $manager->process('BTC-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
         $position = Position::first();
 
         // Price drops to the target (Target1).
@@ -109,12 +109,63 @@ class PositionManagerTest extends TestCase
         $candles = $this->bounceShortCandles();
         $candles[] = $this->candle($target + 1, $target + 2, $target - 1, $target);
 
-        $manager->process('BTC-USDT', '1h', $candles, 100.0, 10.0);
+        $manager->process('ETH-USDT', '1h', $candles, 100.0, 10.0);
 
         $position->refresh();
         $this->assertSame(Position::STATUS_CLOSED, $position->status);
         // It could be Target2 or Target1 depending on evaluation order, both are equal.
         $this->assertContains($position->exit_type, ['TARGET2']);
         $this->assertNotNull($position->closed_at);
+    }
+
+    public function test_cooldown_prevents_new_entry(): void
+    {
+        // Position was recently closed (5 minutes ago)
+        Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_CLOSED,
+            'entry_price' => 100.0,
+            'stop_price' => 105.0,
+            'target1' => 95.0,
+            'target2' => 90.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(5),
+        ]);
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'entry_cooldown_minutes' => 30,
+            ]),
+        );
+
+        // Even with a valid bounce setup, entry is blocked during cooldown
+        $result = $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+
+        $this->assertNull($result->entrySignal);
+        $this->assertDatabaseCount('positions', 1);
+    }
+
+    public function test_excluded_symbol_is_not_opened(): void
+    {
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'excluded_symbols' => ['BTC-USDT'],
+            ]),
+        );
+
+        // Even with a valid signal, excluded symbol BTC-USDT does not create a position
+        $result = $manager->process('BTC-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+
+        $this->assertNotNull($result->entrySignal);
+        $this->assertDatabaseCount('positions', 0);
     }
 }

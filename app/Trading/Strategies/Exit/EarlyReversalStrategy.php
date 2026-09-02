@@ -26,18 +26,28 @@ use App\Trading\Enums\ExitType;
  */
 final class EarlyReversalStrategy implements ExitStrategyInterface
 {
+    public function __construct(private readonly array $config = [])
+    {
+    }
+
     /**
      * Оценка разворотных паттернов против открытой позиции.
      */
     public function evaluate(RuleContext $ctx, PositionState $position): ?ExitSignal
     {
-        // Проверяем наличие минимум 3 свечей в истории для формирования паттерна
+        // Флаг лонговой позиции
+        $isLong = $position->direction === Direction::Long;
+
+        // 0. Опережающий выход по резкому импульсу BTC (BTC Lead-Lag Fast Exit)
+        if ($this->hasBtcReversal($ctx, $isLong)) {
+            return new ExitSignal(ExitType::EarlyReversal, 100, reason: ExitReason::BtcReversal);
+        }
+
+        // Проверяем наличие минимум 3 свечей в истории для формирования свечного паттерна
         if ($ctx->n < 3) {
             return null;
         }
 
-        // Флаг лонговой позиции
-        $isLong = $position->direction === Direction::Long;
         // Текущее значение ATR
         $atr = $ctx->atr;
         // Индекс последней свечи
@@ -146,5 +156,36 @@ final class EarlyReversalStrategy implements ExitStrategyInterface
         return $isLong
             ? ($ctx->ema8At($i) < $ctx->ema8At($i - 1) && $ctx->ema8At($i - 1) < $ctx->ema8At($i - 2))
             : ($ctx->ema8At($i) > $ctx->ema8At($i - 1) && $ctx->ema8At($i - 1) > $ctx->ema8At($i - 2));
+    }
+
+    /**
+     * Опережающий разворот по импульсу BTC (BTC Lead-Lag Fast Exit).
+     */
+    private function hasBtcReversal(RuleContext $ctx, bool $isLong): bool
+    {
+        if ($ctx->symbol === 'BTC-USDT' || ! $ctx->hasBtcData()) {
+            return false;
+        }
+
+        $fastExitDump = (float) ($this->config['btc_fast_exit_dump_percent'] ?? 0.35);
+        $fastExitPump = (float) ($this->config['btc_fast_exit_pump_percent'] ?? 0.35);
+
+        // Импульсное изменение цены BTC за последние 2 свечи
+        $btcRet2 = $ctx->btcReturnPct(2);
+        if ($btcRet2 === null) {
+            return false;
+        }
+
+        // Для лонга: если BTC резко летит вниз
+        if ($isLong && $btcRet2 <= -$fastExitDump) {
+            return true;
+        }
+
+        // Для шорта: если BTC резко летит вверх
+        if (! $isLong && $btcRet2 >= $fastExitPump) {
+            return true;
+        }
+
+        return false;
     }
 }

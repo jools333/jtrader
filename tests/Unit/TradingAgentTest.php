@@ -244,4 +244,64 @@ class TradingAgentTest extends TestCase
         $this->assertSame(100, $exit->closePercent);
         $this->assertNotNull($exit->reason);
     }
+
+    public function test_btc_dump_blocks_altcoin_long_entry(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+
+        // Valid long bounce candles
+        $candles = $this->baseline(45, 92, 98);
+        $candles[] = $this->candle(98.0, 103.0, 97.8, 102.5);
+        $candles[] = $this->candle(102.5, 104.5, 102.0, 104.0);
+        $candles[] = $this->candle(104.0, 104.2, 101.5, 102.0);
+        $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8);
+        $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);
+        $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
+
+        // BTC candles showing a sharp dump (> 0.20% drop)
+        $btcCandles = $this->baseline(50, 80000, 79000);
+        $btcCandles[] = $this->candle(79000, 79100, 78000, 78200); // sharp dump
+
+        $agent = new TradingAgent([
+            'min_rr' => 2.0,
+            'btc_filter_enabled' => true,
+            'btc_max_dump_percent' => 0.20,
+        ]);
+
+        $result = $agent->evaluate($candles, $level, $atr, null, [], 'LINK-USDT', '5m', $btcCandles);
+
+        // LONG entry must be blocked by BTC dump filter
+        $this->assertNull($result->entrySignal);
+    }
+
+    public function test_btc_flash_crash_triggers_early_exit_on_long(): void
+    {
+        $atr = 8.0;
+        $candles = $this->baseline(50, 95, 100);
+
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 95.0,
+            stopPrice: 85.0,
+            target1: 110.0,
+            target2: 120.0,
+        );
+
+        // BTC candles with sudden >0.35% drop
+        $btcCandles = $this->baseline(50, 80000, 80000);
+        $btcCandles[] = $this->candle(80000, 80100, 79200, 79300); // -0.87% dump
+
+        $agent = new TradingAgent([
+            'btc_fast_exit_dump_percent' => 0.35,
+        ]);
+
+        $exit = $agent->evaluate($candles, 95.0, $atr, $position, [], 'LINK-USDT', '5m', $btcCandles)->exitSignal;
+
+        $this->assertNotNull($exit);
+        $this->assertSame(ExitType::EarlyReversal, $exit->type);
+        $this->assertSame(\App\Trading\Enums\ExitReason::BtcReversal, $exit->reason);
+        $this->assertSame(100, $exit->closePercent);
+    }
 }

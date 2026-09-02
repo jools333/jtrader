@@ -31,6 +31,19 @@ return [
     // Hard cap: notional position value ≤ X% of balance (0 = disabled).
     // Prevents oversized positions when the stop is very tight relative to price.
     'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 10.0),
+    // Minimum cooldown in minutes between positions on the same symbol (0 = disabled).
+    'entry_cooldown_minutes' => (int) env('TRADING_ENTRY_COOLDOWN_MINUTES', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Excluded symbols from trading
+    |--------------------------------------------------------------------------
+    | Symbols monitored for market regime / intermarket signals but excluded
+    | from opening trades.
+    */
+    'excluded_symbols' => [
+        'BTC-USDT',
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -54,6 +67,13 @@ return [
         'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
         'target1_r' => 2.0,       // target 1 at 2R
         'target2_r' => 4.0,       // target 2 at 4R
+
+        // BTC Anchor (межрыночный фильтр)
+        'btc_filter_enabled' => (bool) env('TRADING_BTC_FILTER_ENABLED', true),
+        'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.20), // макс допустимый дамп BTC за 3 свечи для входа в LONG
+        'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.20), // макс допустимый памп BTC за 3 свечи для входа в SHORT
+        'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.35), // импульсный дамп BTC для опережающего выхода из LONG
+        'btc_fast_exit_pump_percent' => (float) env('TRADING_BTC_FAST_EXIT_PUMP_PCT', 0.35), // импульсный памп BTC для опережающего выхода из SHORT
         
         // Настройки BounceStrategy
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума

@@ -42,19 +42,28 @@ final class PositionManager
      *
      * @param array<int, \App\Market\DTO\Candle> $candles oldest -> newest
      */
-    public function process(string $symbol, string $interval, array $candles, float $level, ?float $atr = null): AgentResult
-    {
+    public function process(
+        string $symbol,
+        string $interval,
+        array $candles,
+        float $level,
+        ?float $atr = null,
+        ?array $btcCandles = null,
+    ): AgentResult {
         $open = $this->openPosition($symbol, $interval);
 
         $state = $open !== null ? $this->toState($open) : null;
         $recent = $open !== null ? [] : $this->recentSignalTypes($symbol, $interval);
 
-        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval);
+        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval, $btcCandles);
+
+        $excluded = (array) ($this->config['excluded_symbols'] ?? []);
+        $isExcluded = in_array($symbol, $excluded, true);
 
         if ($open !== null && $result->exitSignal !== null) {
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
             $this->attachChart($position, $candles);
-        } elseif ($open === null && $result->entrySignal !== null) {
+        } elseif ($open === null && $result->entrySignal !== null && ! $isExcluded && ! $this->isCoolingDown($symbol)) {
             $entryOpenTime = $this->currentOpenTime($candles);
             $position = $this->openFromSignal($symbol, $interval, $result->entrySignal, $result->indicators, $level, $entryOpenTime);
             $this->attachChart($position, $candles);
@@ -81,13 +90,12 @@ final class PositionManager
         }
     }
 
-    /** The currently open position for the pair/timeframe, if any. */
+    /** The currently open position for the pair, if any (at most 1 active position per symbol). */
     public function openPosition(string $symbol, string $interval): ?Position
     {
         return Position::query()
             ->open()
             ->where('symbol', $symbol)
-            ->where('interval', $interval)
             ->latest('opened_at')
             ->first();
     }
@@ -233,6 +241,27 @@ final class PositionManager
             // A reduced size means T1 already banked profit and the stop is at break-even.
             breakevenSet: $position->size < 1.0,
         );
+    }
+
+    /**
+     * Whether this symbol has had an opened or closed position within the cooldown window.
+     */
+    public function isCoolingDown(string $symbol): bool
+    {
+        $minutes = (int) ($this->config['entry_cooldown_minutes'] ?? 0);
+        if ($minutes <= 0) {
+            return false;
+        }
+
+        $since = Carbon::now()->subMinutes($minutes);
+
+        return Position::query()
+            ->where('symbol', $symbol)
+            ->where(function ($q) use ($since) {
+                $q->where('opened_at', '>=', $since)
+                    ->orWhere('closed_at', '>=', $since);
+            })
+            ->exists();
     }
 
     /**

@@ -35,5 +35,6 @@ interface TradingAgentInterface
         array $recentSignalTypes = [],
         ?string $symbol = null,
         ?string $interval = null,
+        ?array $btcCandles = null,
     ): AgentResult;
 }

@@ -33,9 +33,14 @@ class AgentScan extends Command
         PositionManager $manager,
     ): int {
         $symbols = $this->option('symbol') ? [$this->option('symbol')] : (array) config('exchange.pairs');
+        $excluded = (array) config('trading.excluded_symbols', []);
         $interval = (string) $this->option('interval');
 
         foreach ($symbols as $symbol) {
+            if (in_array($symbol, $excluded, true) && ! $this->option('symbol')) {
+                continue;
+            }
+
             try {
                 $this->scan($candlesRepo, $analyzer, $manager, $symbol, $interval);
             } catch (Throwable $e) {
@@ -69,7 +74,9 @@ class AgentScan extends Command
             return;
         }
 
-        $result = $manager->process($symbol, $interval, $candles, $level, $atr);
+        $btcCandles = $symbol !== 'BTC-USDT' ? $candlesRepo->recent('BTC-USDT', $interval) : null;
+
+        $result = $manager->process($symbol, $interval, $candles, $level, $atr, $btcCandles);
 
         $entry = $result->entrySignal ? $result->entrySignal->type->value.' '.$result->entrySignal->direction->value : '—';
         $exit = $result->exitSignal ? $result->exitSignal->type->value : '—';

@@ -92,7 +92,7 @@ final class TradingAgent implements TradingAgentInterface
             new StopLossStrategy(),
             new Target2Strategy(),
             new Target1Strategy(),
-            new EarlyReversalStrategy(),
+            new EarlyReversalStrategy($this->config),
         ];
     }
 
@@ -107,6 +107,7 @@ final class TradingAgent implements TradingAgentInterface
         array $recentSignalTypes = [],
         ?string $symbol = null,
         ?string $interval = null,
+        ?array $btcCandles = null,
     ): AgentResult {
         // Сбрасываем ключи массива свечей
         $candles = array_values($candles);
@@ -124,10 +125,36 @@ final class TradingAgent implements TradingAgentInterface
         $ema50 = SeriesMath::ema($closes, 50);
         $macd = SeriesMath::macd($closes, 12, 26, 9);
 
+        // Вычисляем индикаторы BTC, если свечи переданы
+        $btcEma8 = null;
+        $btcEma21 = null;
+        $btcEma50 = null;
+        if (! empty($btcCandles) && count($btcCandles) >= 8) {
+            $btcCandles = array_values($btcCandles);
+            $btcCloses = array_map(static fn (Candle $c) => $c->close, $btcCandles);
+            $btcEma8 = SeriesMath::ema($btcCloses, 8);
+            $btcEma21 = SeriesMath::ema($btcCloses, 21);
+            $btcEma50 = SeriesMath::ema($btcCloses, 50);
+        }
+
         // Создаем снимок текущих значений индикаторов
         $indicators = $this->createIndicatorSnapshot($candles, $atr, $ema8, $ema21, $ema50, $macd);
         // Создаем объект контекста правил со всеми данными
-        $ctx = new RuleContext($candles, $level, $atr, $ema8, $ema21, $ema50, $macd, $symbol, $interval);
+        $ctx = new RuleContext(
+            $candles,
+            $level,
+            $atr,
+            $ema8,
+            $ema21,
+            $ema50,
+            $macd,
+            $symbol,
+            $interval,
+            $btcCandles,
+            $btcEma8,
+            $btcEma21,
+            $btcEma50,
+        );
 
         // Если есть открытая позиция — проверяем стратегии выхода
         $exit = $position !== null ? $this->evaluateExit($ctx, $position) : null;
@@ -203,6 +230,11 @@ final class TradingAgent implements TradingAgentInterface
 
             // Фильтр R:R: отбрасываем сделки с соотношением прибыль/риск меньше порога
             if ($signal->rrRatio < $minRr) {
+                continue;
+            }
+
+            // Направленный фильтр (включая межрыночный фильтр BTC для выбранного направления)
+            if (! $this->guard->allows($ctx, $signal->direction)) {
                 continue;
             }
 

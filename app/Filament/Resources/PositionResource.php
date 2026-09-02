@@ -337,11 +337,12 @@ class PositionResource extends Resource
                         ->label('Причина')
                         ->placeholder('—')
                         ->formatStateUsing(fn (?string $state): string => match ($state) {
-                            ExitReason::Divergence->value => 'Дивергенция',
-                            ExitReason::Absorption->value => 'Поглощение',
-                            ExitReason::EmaTurn->value    => 'Разворот EMA',
-                            null                          => '—',
-                            default                       => $state,
+                            ExitReason::Divergence->value  => 'Дивергенция',
+                            ExitReason::Absorption->value  => 'Поглощение',
+                            ExitReason::EmaTurn->value     => 'Разворот EMA',
+                            ExitReason::BtcReversal->value => 'Импульс BTC',
+                            null                           => '—',
+                            default                        => $state,
                         }),
                     TextEntry::make('exit_price')->label('Цена выхода')->numeric(decimalPlaces: 6)->placeholder('—'),
                     TextEntry::make('realized_pnl')

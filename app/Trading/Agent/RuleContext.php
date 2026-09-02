@@ -39,6 +39,10 @@ final class RuleContext
         public readonly array $macd,
         public readonly ?string $symbol = null,
         public readonly ?string $interval = null,
+        public readonly ?array $btcCandles = null,
+        public readonly ?array $btcEma8 = null,
+        public readonly ?array $btcEma21 = null,
+        public readonly ?array $btcEma50 = null,
     ) {
         $this->n = count($candles);
         $this->i = $this->n - 1;
@@ -194,5 +198,76 @@ final class RuleContext
         $line = $this->macd['line'];
 
         return $this->price() < $priorLow && ($line[$this->i] ?? 0.0) > ($line[$this->i - 1] ?? 0.0);
+    }
+
+    /** Whether BTC candle context is available. */
+    public function hasBtcData(): bool
+    {
+        return ! empty($this->btcCandles) && count($this->btcCandles) >= 3;
+    }
+
+    /** Price change of BTC over the last `k` candles in percent (e.g. -0.25). */
+    public function btcReturnPct(int $k = 3): ?float
+    {
+        if (! $this->hasBtcData()) {
+            return null;
+        }
+
+        $cnt = count($this->btcCandles);
+        $lastIdx = $cnt - 1;
+        $prevIdx = max(0, $lastIdx - $k);
+
+        $lastClose = $this->btcCandles[$lastIdx]->close;
+        $prevClose = $this->btcCandles[$prevIdx]->close;
+
+        if ($prevClose <= 0.0) {
+            return 0.0;
+        }
+
+        return (($lastClose - $prevClose) / $prevClose) * 100.0;
+    }
+
+    public function btcEma8Falling(): ?bool
+    {
+        if (empty($this->btcEma8) || count($this->btcEma8) < 2) {
+            return null;
+        }
+
+        $idx = count($this->btcEma8) - 1;
+
+        return ($this->btcEma8[$idx] ?? 0.0) < ($this->btcEma8[$idx - 1] ?? 0.0);
+    }
+
+    public function btcEma8Rising(): ?bool
+    {
+        if (empty($this->btcEma8) || count($this->btcEma8) < 2) {
+            return null;
+        }
+
+        $idx = count($this->btcEma8) - 1;
+
+        return ($this->btcEma8[$idx] ?? 0.0) > ($this->btcEma8[$idx - 1] ?? 0.0);
+    }
+
+    public function btcLastPrice(): ?float
+    {
+        if (! $this->hasBtcData()) {
+            return null;
+        }
+
+        $c = end($this->btcCandles);
+
+        return $c ? $c->close : null;
+    }
+
+    public function btcEma50(): ?float
+    {
+        if (empty($this->btcEma50)) {
+            return null;
+        }
+
+        $v = end($this->btcEma50);
+
+        return $v !== false ? (float) $v : null;
     }
 }

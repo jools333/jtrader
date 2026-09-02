@@ -130,6 +130,38 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
+        // 4. Цена входа в допустимой зоне уровня (не перекуплена / не на пике)
+        $passedEntryZone = $last->close <= $level + $atr * $this->levelApproachAtr && $last->close >= $level - $atr * $this->levelApproachAtr;
+
+        $criteria['entry_zone'] = new CriterionResult(
+            key: 'entry_zone',
+            name: 'Цена в зоне входа от уровня',
+            passed: $passedEntryZone,
+            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->levelApproachAtr, $level + $atr * $this->levelApproachAtr),
+            actual: sprintf('Close = %.4f', $last->close),
+            actualValue: $last->close,
+            thresholdValue: $level,
+        );
+        if (! $passedEntryZone) {
+            $missing[] = 'Цена ушла слишком далеко от уровня поддержки (вход на пике)';
+        }
+
+        // 5. Подтверждение бычьей свечой (закрытие выше открытия или EMA8 растет)
+        $passedBullish = $last->close >= $last->open || $ctx->ema8Rising();
+
+        $criteria['bullish_confirmation'] = new CriterionResult(
+            key: 'bullish_confirmation',
+            name: 'Подтверждение отскока (зеленая свеча или EMA8 растет)',
+            passed: $passedBullish,
+            expected: 'Close >= Open или EMA8 растет',
+            actual: sprintf('Close %.4f vs Open %.4f, EMA8 Rising: %s', $last->close, $last->open, $ctx->ema8Rising() ? 'Yes' : 'No'),
+            actualValue: $last->close,
+            thresholdValue: $last->open,
+        );
+        if (! $passedBullish) {
+            $missing[] = 'Нет подтверждения разворота вверх (медвежья свеча)';
+        }
+
         $total = count($criteria);
         $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
@@ -237,6 +269,38 @@ final class BounceStrategy implements EntryStrategyInterface
         );
         if (! $passedTrend) {
             $missing[] = 'Против тренда (EMA не подтверждает падение)';
+        }
+
+        // 5. Цена входа в допустимой зоне уровня (не перепродана / не на дне)
+        $passedEntryZone = $last->close >= $level - $atr * $this->levelApproachAtr && $last->close <= $level + $atr * $this->levelApproachAtr;
+
+        $criteria['entry_zone'] = new CriterionResult(
+            key: 'entry_zone',
+            name: 'Цена в зоне входа от уровня',
+            passed: $passedEntryZone,
+            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->levelApproachAtr, $level + $atr * $this->levelApproachAtr),
+            actual: sprintf('Close = %.4f', $last->close),
+            actualValue: $last->close,
+            thresholdValue: $level,
+        );
+        if (! $passedEntryZone) {
+            $missing[] = 'Цена ушла слишком далеко от уровня сопротивления (вход на дне)';
+        }
+
+        // 6. Подтверждение медвежьей свечой (закрытие ниже открытия или EMA8 падает)
+        $passedBearish = $last->close <= $last->open || $ctx->ema8Falling();
+
+        $criteria['bearish_confirmation'] = new CriterionResult(
+            key: 'bearish_confirmation',
+            name: 'Подтверждение отскока (красная свеча или EMA8 падает)',
+            passed: $passedBearish,
+            expected: 'Close <= Open или EMA8 падает',
+            actual: sprintf('Close %.4f vs Open %.4f, EMA8 Falling: %s', $last->close, $last->open, $ctx->ema8Falling() ? 'Yes' : 'No'),
+            actualValue: $last->close,
+            thresholdValue: $last->open,
+        );
+        if (! $passedBearish) {
+            $missing[] = 'Нет подтверждения разворота вниз (бычья свеча)';
         }
 
         $total = count($criteria);

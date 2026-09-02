@@ -12,4 +12,5 @@ enum ExitReason: string
     case Divergence = 'divergence';
     case Absorption = 'absorption';
     case EmaTurn = 'ema_turn';
+    case BtcReversal = 'btc_reversal';
 }
