@@ -134,7 +134,7 @@ class PositionSyncTest extends TestCase
             'target2' => 13.0,
             'quantity' => 10.0,
             'size' => 1.0,
-            'opened_at' => now()->subHours(2),
+            'opened_at' => \Illuminate\Support\Carbon::createFromTimestampMs(1788400000000),
         ]);
 
         Http::fake([

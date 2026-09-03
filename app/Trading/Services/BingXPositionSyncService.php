@@ -215,11 +215,22 @@ class BingXPositionSyncService
         $isLong = $pos->direction === Direction::Long->value;
         $expectedClosingSide = $isLong ? 'SELL' : 'BUY';
         $startTime = $pos->opened_at
-            ? (int) $pos->opened_at->subMinutes(5)->getTimestampMs()
+            ? (int) $pos->opened_at->copy()->subMinutes(10)->getTimestampMs()
             : (int) now()->subDays($lookbackDays)->getTimestampMs();
 
         // 1. Fetch orders from BingX
         $orders = $this->fetchOrders($symbol, $startTime);
+
+        // First pass: find positionID from entry_order_id or external_id if present
+        $matchedPositionId = $pos->external_id;
+        if (! $matchedPositionId && ! empty($pos->entry_order_id)) {
+            foreach ($orders as $order) {
+                if ((string) ($order['orderId'] ?? '') === (string) $pos->entry_order_id) {
+                    $matchedPositionId = ! empty($order['positionID']) ? (string) $order['positionID'] : null;
+                    break;
+                }
+            }
+        }
 
         $closingOrder = null;
         $totalCommission = 0.0;
@@ -231,28 +242,41 @@ class BingXPositionSyncService
                 continue;
             }
 
+            $orderPosId = ! empty($order['positionID']) ? (string) $order['positionID'] : null;
             $orderSide = (string) ($order['side'] ?? '');
             $orderPosSide = (string) ($order['positionSide'] ?? '');
             $orderFee = abs((float) ($order['commission'] ?? 0.0));
             $orderProfit = (float) ($order['profit'] ?? 0.0);
             $orderTime = (int) ($order['updateTime'] ?? $order['time'] ?? 0);
 
-            // Is this the closing order?
-            $isClosing = ($orderSide === $expectedClosingSide)
-                && (empty($orderPosSide) || $orderPosSide === $pos->direction)
-                && (! empty($order['reduceOnly']) || $orderProfit != 0.0 || in_array($order['type'] ?? '', ['TAKE_PROFIT_MARKET', 'STOP_MARKET', 'STOP', 'TAKE_PROFIT'], true));
-
-            if ($isClosing && ($closingOrder === null || $orderTime > (int) ($closingOrder['updateTime'] ?? 0))) {
-                $closingOrder = $order;
-                $realizedPnlFromOrders = $orderProfit;
+            // Check if this order belongs to our position
+            $isSamePosition = false;
+            if ($matchedPositionId !== null && $orderPosId !== null && $orderPosId === $matchedPositionId) {
+                $isSamePosition = true;
+            } elseif ($orderTime >= $startTime) {
+                // If positionID didn't match, check by direction and symbol
+                if (empty($orderPosSide) || $orderPosSide === $pos->direction) {
+                    $isSamePosition = true;
+                }
             }
 
-            if ($orderTime >= $startTime) {
+            if ($isSamePosition) {
                 $totalCommission += $orderFee;
+
+                $isClosing = ($orderSide === $expectedClosingSide)
+                    && (! empty($order['reduceOnly']) || $orderProfit != 0.0 || in_array($order['type'] ?? '', ['TAKE_PROFIT_MARKET', 'STOP_MARKET', 'STOP', 'TAKE_PROFIT'], true));
+
+                if ($isClosing && ($closingOrder === null || $orderTime > (int) ($closingOrder['updateTime'] ?? 0))) {
+                    $closingOrder = $order;
+                    $realizedPnlFromOrders = $orderProfit;
+                    if ($orderPosId !== null && $matchedPositionId === null) {
+                        $matchedPositionId = $orderPosId;
+                    }
+                }
             }
         }
 
-        // 2. Fetch income records (realized PnL and fees)
+        // 2. Fetch income records (realized PnL, commissions, and funding fees)
         $incomeRecords = $this->fetchIncome($symbol, $startTime);
         $realizedPnlFromIncome = null;
         $feesFromIncome = 0.0;
@@ -271,8 +295,8 @@ class BingXPositionSyncService
             }
         }
 
-        $finalPnl = $realizedPnlFromIncome ?? $realizedPnlFromOrders ?? $pos->realized_pnl;
-        $finalFees = $feesFromIncome > 0.0 ? $feesFromIncome : $totalCommission;
+        $finalPnl = $realizedPnlFromOrders ?? $realizedPnlFromIncome ?? $pos->realized_pnl;
+        $finalFees = max($totalCommission, $feesFromIncome);
 
         $exitPrice = null;
         $exitType = null;
@@ -430,7 +454,7 @@ class BingXPositionSyncService
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
-                ->get($path.'?signature='.$signature, $params);
+                ->get($path, $params + ['signature' => $signature]);
 
             return (array) $response->json();
         } catch (Throwable $e) {
