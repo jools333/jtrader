@@ -270,4 +270,59 @@ final class RuleContext
 
         return $v !== false ? (float) $v : null;
     }
+
+    /** Price change of the current symbol over the last `k` candles in percent (e.g. -0.25). */
+    public function returnPct(int $k = 3): float
+    {
+        if ($this->n < 2) {
+            return 0.0;
+        }
+
+        $prevIdx = max(0, $this->i - $k);
+        $prevClose = $this->candles[$prevIdx]->close;
+
+        if ($prevClose <= 0.0) {
+            return 0.0;
+        }
+
+        return (($this->price() - $prevClose) / $prevClose) * 100.0;
+    }
+
+    /** Whether the latest BTC candle has volume surging above its recent average. */
+    public function btcVolumeSurge(float $multiplier = 1.3, int $period = 20): ?bool
+    {
+        if (! $this->hasBtcData()) {
+            return null;
+        }
+
+        $cnt = count($this->btcCandles);
+        $lastCandle = $this->btcCandles[$cnt - 1];
+        $priorSlice = array_slice($this->btcCandles, max(0, $cnt - 1 - $period), min($cnt - 1, $period));
+        $avgVol = CandleSignals::avgVolume($priorSlice, $period);
+
+        if ($avgVol <= 0.0) {
+            return false;
+        }
+
+        return $lastCandle->volume >= $avgVol * $multiplier;
+    }
+
+    /** Whether the latest candle of the current symbol has volume surging above its recent average. */
+    public function volumeSurge(float $multiplier = 1.5, int $period = 20): bool
+    {
+        if ($this->n < 2) {
+            return false;
+        }
+
+        $lastCandle = $this->last();
+        $priorSlice = array_slice($this->candles, max(0, $this->n - 1 - $period), min($this->n - 1, $period));
+        $avgVol = CandleSignals::avgVolume($priorSlice, $period);
+
+        if ($avgVol <= 0.0) {
+            return false;
+        }
+
+        return $lastCandle->volume >= $avgVol * $multiplier;
+    }
 }
+

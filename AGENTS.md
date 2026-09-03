@@ -113,7 +113,24 @@ Trading logic is located in `app/Trading/`:
     7. *Momentum Exhaustion*: no aggressive pullback candles ($> 0.70 \times \text{ATR}$).
     8. *Wick Rejection / Pin Bar*: level touch/pierce within $0.15 \times \text{ATR}$ and rejection wick.
   - *Entry Rule*: All 4 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 83.33% = 10/12 criteria).
-- **Active Entry Strategies Status**: Currently only `BounceStrategy` is registered as active in `TradingAgent::__construct()`. The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
+- **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
+  - `BTC-USDT` is excluded from opening positions (`config('trading.excluded_symbols')`), but streams via WebSocket for market regime analysis.
+  - Altcoin LONG entries are blocked if BTC drops $> 0.20\%$ over 3 bars or if `BTC EMA8 < EMA21` and BTC price $< \text{EMA50}$.
+  - Altcoin SHORT entries are blocked if BTC pumps $> 0.20\%$ over 3 bars.
+- **BTC Lead-Lag Fast Exit (`EarlyReversalStrategy`, `ExitReason::BtcReversal`)**:
+  - Detects sharp BTC counter-impulses ($\ge 0.35\%$ drop for LONG or $\ge 0.35\%$ pump for SHORT over 2 bars) and executes immediate market exit on altcoins before they follow BTC down.
+- **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`)**:
+  - *Orphan Order Cleanup*: `cancelAllOrders(symbol)` called on 100% position close and before opening new positions.
+  - *Single Position per Symbol*: prevents accumulating duplicate legs across intervals.
+  - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=30` prevents re-entering the same symbol for 30 minutes after close.
+- **Active Entry Strategies Status**:
+  - `BounceStrategy`: Multi-candle Price Action bounce setup from key horizontal levels (12 criteria, high R:R).
+  - `BtcLeadLagStrategy`: Cross-asset momentum spillover / lead-lag entry following sharp BTC impulses ($\ge 0.40\%$) entering lagging altcoins (lag gap $\ge 0.25\%$) with Relative Strength Guard. Registered in `TradingAgent::__construct()`.
+  - The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
+- **Real-Time WebSocket Impulse Trigger (`BtcImpulseDetector`)**:
+  - `WsCandles` streams live `BTC-USDT@kline_1m` ticks via BingX WebSocket.
+  - `BtcImpulseDetector` monitors price moves in real-time. Upon detecting an impulse $\ge \text{lead\_lag\_btc\_impulse\_pct}$ (and outside cooldown), triggers a fast scan of altcoins and enters the top lagging opportunity via `PositionManager` directly on the demo (VST) exchange.
+  - Fixed WebSocket Ping/Pong keep-alive to maintain 24/7 stable connection without timeouts.
 - **Strategy Statistics & Diagnostics Logging**:
   - `BounceStrategy::diagnose()` scores 12 individual criteria (4 hard + 8 soft).
   - All evaluations reaching $\ge 50\%$ criteria match are logged into `strategy_evaluations` table via `StrategyLoggerInterface` / `DatabaseStrategyLogger`.
@@ -134,8 +151,14 @@ Trading logic is located in `app/Trading/`:
 - **API Credentials**: Configured in `.env` (`EXCHANGE_BINGX_API_KEY`, `EXCHANGE_BINGX_API_SECRET`, `config('exchange.drivers.bingx')`). Outbound requests are signed with HMAC-SHA256.
 - **How to inspect**: Run queries via Tinker or artisan command using `Http::baseUrl(...)` with `X-BX-APIKEY` header and timestamped HMAC signature.
 
-
-
 ## Checking Trade Statistics
 Real trade statistics (positions, PnL) should be checked on the production server via SSH:
 `ssh jools@jools.com.ru` -> `/home/jools/jtrader`
+
+### Performance History (Verified on BingX VST API):
+- **2026-08-31**: Realized PnL: +$203.60, Fees: -$129.69, Funding: +$0.58, **Net PnL: +$74.48** (LONG Net: +$41.08, SHORT Net: +$29.74).
+- **2026-09-01**: Realized PnL: +$83.98, Fees: -$93.46, Funding: +$0.79, **Net PnL: -$8.69** (41 LONGs [-$25.63 net], 7 SHORTs [-$15.62 net]).
+- **2026-09-02**:
+  - *Automated Bot Trades*: **6/6 wins (100% Win Rate)**, Realized: +$37.90, Fees: -$18.82, Funding: -$0.23, **Net Bot Profit: +$18.85** (ADA: +$10.33, LINK: +$5.20, DOGE: +$3.55).
+  - *Manual Close of Orphaned SOL-USDT*: -$149.81 net (opened Sept 01 15:32 before order cleanup fixes).
+  - *Total Net (all included)*: -$130.96.

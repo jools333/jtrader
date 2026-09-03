@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Market\DTO\Candle;
 use App\Market\Repositories\CandleRepository;
+use App\Trading\Services\BtcImpulseDetector;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -16,7 +17,7 @@ use WebSocket\Client;
  *
  * On startup it seeds the DB via the REST API (same as candles:sync), then
  * subscribes to every configured pair × timeframe on a single WebSocket
- * connection and upserts each incoming kline tick.  Automatically reconnects
+ * connection and upserts each incoming kline tick. Automatically reconnects
  * on any error.
  */
 class WsCandles extends Command
@@ -31,7 +32,7 @@ class WsCandles extends Command
     /** Socket read timeout — BingX sends pings every ~30 s, so 60 s is safe. */
     private const SOCKET_TIMEOUT = 60;
 
-    public function handle(CandleRepository $repository): int
+    public function handle(CandleRepository $repository, ?BtcImpulseDetector $detector = null): int
     {
         $symbols    = (array) config('exchange.pairs');
         $intervals  = array_keys((array) config('exchange.timeframes'));
@@ -43,7 +44,7 @@ class WsCandles extends Command
 
         while (true) {
             try {
-                $this->stream($repository, $symbols, $intervals, $timeframes);
+                $this->stream($repository, $detector, $symbols, $intervals, $timeframes);
             } catch (Throwable $e) {
                 Log::warning('candles:ws disconnected', ['error' => $e->getMessage()]);
                 $this->warn("Connection lost ({$e->getMessage()}). Reconnecting in " . self::RECONNECT_DELAY . 's…');
@@ -72,6 +73,7 @@ class WsCandles extends Command
 
     private function stream(
         CandleRepository $repository,
+        ?BtcImpulseDetector $detector,
         array $symbols,
         array $intervals,
         array $timeframes,
@@ -86,6 +88,7 @@ class WsCandles extends Command
                     'reqType'  => 'sub',
                     'dataType' => "{$symbol}@kline_{$interval}",
                 ]));
+                usleep(10000);
             }
         }
 
@@ -96,6 +99,13 @@ class WsCandles extends Command
             $raw  = $client->receive();
             // BingX may gzip-compress frames; fall back to raw on failure.
             $text = (@gzdecode($raw) ?: $raw);
+
+            // Raw string Ping keep-alive from BingX
+            if (trim((string) $text) === 'Ping') {
+                $client->send('Pong');
+                continue;
+            }
+
             $msg  = json_decode($text, true);
 
             if (! is_array($msg)) {
@@ -108,12 +118,16 @@ class WsCandles extends Command
                 continue;
             }
 
-            $this->handleKline($repository, $msg, $timeframes);
+            $this->handleKline($repository, $detector, $msg, $timeframes);
         }
     }
 
-    private function handleKline(CandleRepository $repository, array $msg, array $timeframes): void
-    {
+    private function handleKline(
+        CandleRepository $repository,
+        ?BtcImpulseDetector $detector,
+        array $msg,
+        array $timeframes,
+    ): void {
         $dataType = (string) ($msg['dataType'] ?? '');
 
         if (! str_contains($dataType, '@kline_')) {
@@ -146,5 +160,14 @@ class WsCandles extends Command
         );
 
         $repository->persist($symbol, $interval, [$candle]);
+
+        // Real-time BTC impulse detection
+        if ($detector !== null && $symbol === 'BTC-USDT' && $interval === '1m') {
+            try {
+                $detector->onBtcTick($candle);
+            } catch (Throwable $e) {
+                Log::warning('BTC impulse detection error', ['error' => $e->getMessage()]);
+            }
+        }
     }
 }

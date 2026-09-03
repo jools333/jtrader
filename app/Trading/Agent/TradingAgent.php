@@ -26,6 +26,8 @@ use App\Trading\DTO\IndicatorSnapshot;
 use App\Trading\DTO\PositionState;
 // Импорт стратегии отскока
 use App\Trading\Strategies\Entry\BounceStrategy;
+// Импорт стратегии BTC Lead-Lag
+use App\Trading\Strategies\Entry\BtcLeadLagStrategy;
 // Импорт стратегии ложного пробоя
 use App\Trading\Strategies\Entry\FalseBreakoutStrategy;
 // Импорт стратегии пробоя и ретеста
@@ -75,8 +77,9 @@ final class TradingAgent implements TradingAgentInterface
         // Инициализация фильтров защиты
         $this->guard = $guard ?? new EntryGuard($this->config);
 
-        // Регистрация набора стратегий входа по умолчанию (активна только BounceStrategy)
-        $this->entryStrategies = $entryStrategies ?? [
+        // Регистрация набора стратегий входа по умолчанию
+        $leadLagEnabled = (bool) ($this->config['lead_lag_enabled'] ?? true);
+        $defaultStrategies = [
             new BounceStrategy(
                 logger: $logger,
                 minEntryScore: (float) ($this->config['min_entry_score'] ?? 90.0),
@@ -86,6 +89,17 @@ final class TradingAgent implements TradingAgentInterface
                 minAtrPercent: (float) ($this->config['bounce_min_atr_percent'] ?? 0.20),
             ),
         ];
+
+        if ($leadLagEnabled) {
+            $defaultStrategies[] = new BtcLeadLagStrategy(
+                logger: $logger,
+                minEntryScore: (float) ($this->config['lead_lag_min_score'] ?? 71.4),
+                btcImpulsePct: (float) ($this->config['lead_lag_btc_impulse_pct'] ?? 0.40),
+                minGapPct: (float) ($this->config['lead_lag_min_gap_pct'] ?? 0.25),
+            );
+        }
+
+        $this->entryStrategies = $entryStrategies ?? $defaultStrategies;
 
         // Регистрация набора стратегий выхода в порядке строгого приоритета
         $this->exitStrategies = $exitStrategies ?? [
@@ -206,8 +220,8 @@ final class TradingAgent implements TradingAgentInterface
      */
     private function evaluateEntry(RuleContext $ctx, array $recentSignalTypes): ?EntrySignal
     {
-        // 1. Проверяем глобальные защитные фильтры
-        if (! $this->guard->allows($ctx)) {
+        // 1. Проверяем глобальные защитные фильтры режима рынка
+        if (! $this->guard->allowsMarket($ctx)) {
             return null;
         }
 
@@ -233,8 +247,8 @@ final class TradingAgent implements TradingAgentInterface
                 continue;
             }
 
-            // Направленный фильтр (включая межрыночный фильтр BTC для выбранного направления)
-            if (! $this->guard->allows($ctx, $signal->direction)) {
+            // Направленный фильтр (включая межрыночный фильтр BTC и проверку уровней)
+            if (! $this->guard->allows($ctx, $signal->direction, $signal->type)) {
                 continue;
             }
 

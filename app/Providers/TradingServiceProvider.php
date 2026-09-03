@@ -67,5 +67,12 @@ class TradingServiceProvider extends ServiceProvider
             config: (array) config('trading'),
             chart: $app->make(ChartRenderer::class),
         ));
+
+        $this->app->singleton(\App\Trading\Services\BtcImpulseDetector::class, fn (Application $app) => new \App\Trading\Services\BtcImpulseDetector(
+            candlesRepo: $app->make(\App\Market\Repositories\CandleRepository::class),
+            analyzer: $app->make(\App\Market\Contracts\MarketAnalyzerInterface::class),
+            manager: $app->make(PositionManager::class),
+            config: (array) config('trading.agent'),
+        ));
     }
 }

@@ -41,8 +41,10 @@ final class TradePlanner
         // Защитный "катастрофический" стоп-лосс на случай краха рынка
         $stopPct = $this->cfg('catastrophic_stop_percent', 2.0) / 100.0;
         
-        // TP фиксирован на процент от цены входа (по умолчанию 0.1% чистой прибыли для первой цели)
-        $tpPercent = $this->cfg('tp_percent', 0.1) / 100.0;
+        // TP фиксирован на процент от цены входа
+        $tpPercent = $type === SignalType::BtcLeadLag
+            ? $this->cfg('lead_lag_tp_percent', 0.40) / 100.0
+            : $this->cfg('tp_percent', 0.1) / 100.0;
         $tpMultiplier = $this->cfg('tp_multiplier', 2.0);
         
         // Учитываем комиссии BingX. Вход теперь LIMIT (Maker), выход TP - MARKET (Taker)
@@ -53,14 +55,23 @@ final class TradePlanner
         // Итоговая дистанция включает желаемый профит и компенсацию комиссий
         $tpDistance = $entry * ($tpPercent + $totalFeePercent);
 
+        // Стоп-лосс: для BtcLeadLag используем ATR стоп (если доступен), иначе процент от цены
+        $stopDistance = ($type === SignalType::BtcLeadLag && $ctx->atr > 0.0)
+            ? min($entry * $stopPct, $ctx->atr * $this->cfg('lead_lag_stop_atr', 1.0))
+            : ($entry * $stopPct);
+
+        if ($stopPrice !== null) {
+            $stopDistance = abs($entry - $stopPrice);
+        }
+
         // Расчет для позиции LONG (покупка)
         if ($dir === Direction::Long) {
-            $stop = $entry - ($entry * $stopPct);
+            $stop = $entry - $stopDistance;
             $target1 = $entry + $tpDistance;
             $target2 = $entry + ($tpDistance * $tpMultiplier);
         } else {
             // Расчет для позиции SHORT (продажа)
-            $stop = $entry + ($entry * $stopPct);
+            $stop = $entry + $stopDistance;
             $target1 = $entry - $tpDistance;
             $target2 = $entry - ($tpDistance * $tpMultiplier);
         }

@@ -87,6 +87,15 @@ return [
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
         'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)
+
+        // Настройки BtcLeadLagStrategy (опережающе-запаздывающий арбитраж за BTC)
+        'lead_lag_enabled' => (bool) env('TRADING_LEAD_LAG_ENABLED', true),
+        'lead_lag_btc_impulse_pct' => (float) env('TRADING_LEAD_LAG_BTC_IMPULSE_PCT', 0.40), // мин. импульс BTC (%) за 1-2 свечи
+        'lead_lag_min_gap_pct' => (float) env('TRADING_LEAD_LAG_MIN_GAP_PCT', 0.25),         // мин. запаздывание альта относительно BTC (%)
+        'lead_lag_cooldown_minutes' => (int) env('TRADING_LEAD_LAG_COOLDOWN_MINUTES', 5),    // кулдаун между импульсами (мин)
+        'lead_lag_min_score' => (float) env('TRADING_LEAD_LAG_MIN_SCORE', 75.0),             // мин. скор для входа (%)
+        'lead_lag_tp_percent' => (float) env('TRADING_LEAD_LAG_TP_PCT', 0.40),                // чистый профит Target 1 для импульса (%)
+        'lead_lag_stop_atr' => (float) env('TRADING_LEAD_LAG_STOP_ATR', 1.0),                 // стоп-лосс в ATR от входа
     ],
 
     /*
