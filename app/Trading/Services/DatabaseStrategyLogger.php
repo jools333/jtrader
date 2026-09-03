@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Trading\Services;
 
+use App\Jobs\RenderEvaluationChartJob;
 use App\Models\StrategyEvaluation;
+use App\Trading\Charting\ChartRenderer;
 use App\Trading\Contracts\StrategyLoggerInterface;
 use App\Trading\DTO\StrategyEvaluationResult;
 use Illuminate\Support\Facades\Log;
 use Throwable;
-
-use App\Trading\Charting\ChartRenderer;
 
 /**
  * Persists strategy evaluations (completed or partial >= threshold) to database.
@@ -56,10 +56,14 @@ final class DatabaseStrategyLogger implements StrategyLoggerInterface
             ]);
 
             // If candles are available and chart rendering is enabled, render and attach chart
-            if ($this->chart !== null && ! empty($result->candles)) {
-                $path = $this->chart->renderEvaluation($evaluation, $result->candles);
-                if ($path !== null) {
-                    $evaluation->update(['chart_path' => $path]);
+            if ($this->chart !== null && ! empty($result->candles) && (bool) config('trading.chart.enabled', false)) {
+                if ((bool) config('trading.chart.queue', true)) {
+                    RenderEvaluationChartJob::dispatch($evaluation->id, $result->candles);
+                } else {
+                    $path = $this->chart->renderEvaluation($evaluation, $result->candles);
+                    if ($path !== null) {
+                        $evaluation->update(['chart_path' => $path]);
+                    }
                 }
             }
         } catch (Throwable $e) {

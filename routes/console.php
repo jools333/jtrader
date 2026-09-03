@@ -16,8 +16,8 @@ Schedule::command('agent:scan')
     ->withoutOverlapping(2);
 
 Schedule::command('strategy:render-outcomes')
-    ->everyMinute()
-    ->withoutOverlapping(5);
+    ->everyTwoMinutes()
+    ->withoutOverlapping(10);
 
 Schedule::command('strategy:prune')
     ->daily()

@@ -9,9 +9,11 @@ use App\Market\DTO\Candle;
 use App\Models\Position;
 use App\Trading\Analysis\CandleSignals;
 use App\Trading\Enums\Direction;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Redis;
 use Throwable;
 
 /**
@@ -330,10 +332,42 @@ final class ChartRenderer
     {
         $python = (string) ($this->config['python_bin'] ?? 'python3');
         $script = (string) ($this->config['script'] ?? base_path('scripts/render_position.py'));
+        $timeout = (int) ($this->config['timeout'] ?? 60);
+        $maxConcurrent = (int) ($this->config['max_concurrent'] ?? 1);
 
         try {
-            $result = Process::timeout((int) ($this->config['timeout'] ?? 60))
-                ->run([$python, $script, $specPath]);
+            if ($maxConcurrent <= 1) {
+                return Cache::lock('chart_renderer_mutex', 120)->block($timeout, function () use ($python, $script, $specPath, $relative, $outPath, $timeout): ?string {
+                    return $this->runProcess($python, $script, $specPath, $relative, $outPath, $timeout);
+                });
+            }
+
+            try {
+                return Redis::funnel('chart_renderer')
+                    ->limit($maxConcurrent)
+                    ->releaseAfter(120)
+                    ->block($timeout, function () use ($python, $script, $specPath, $relative, $outPath, $timeout): ?string {
+                        return $this->runProcess($python, $script, $specPath, $relative, $outPath, $timeout);
+                    });
+            } catch (Throwable) {
+                return Cache::lock('chart_renderer_mutex', 120)->block($timeout, function () use ($python, $script, $specPath, $relative, $outPath, $timeout): ?string {
+                    return $this->runProcess($python, $script, $specPath, $relative, $outPath, $timeout);
+                });
+            }
+        } catch (Throwable $e) {
+            Log::warning('[chart] renderer lock or execution error; spec kept for out-of-band rendering', [
+                'spec' => $specPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function runProcess(string $python, string $script, string $specPath, string $relative, string $outPath, int $timeout): ?string
+    {
+        try {
+            $result = Process::timeout($timeout)->run([$python, $script, $specPath]);
 
             if ($result->successful() && File::exists($outPath)) {
                 return $relative;

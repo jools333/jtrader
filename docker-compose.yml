@@ -79,12 +79,16 @@ services:
     networks:
       - jtrader
 
-  # ---- Queue worker (background candle synchronisation jobs) ----
+  # ---- Queue worker (background candle synchronisation & chart generation) ----
   queue:
     image: jtrader/app
     restart: unless-stopped
     working_dir: /var/www/html
-    command: php artisan queue:work --tries=3 --timeout=120 --sleep=2
+    command: php artisan queue:work --queue=default,charts --tries=3 --timeout=120 --sleep=2
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
     environment:
       <<: *php-env
     # Not an HTTP service — disable the image's php-fpm healthcheck.

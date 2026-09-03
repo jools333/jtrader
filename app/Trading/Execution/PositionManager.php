@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Trading\Execution;
 
+use App\Jobs\RenderPositionChartJob;
 use App\Models\Position;
 use App\Trading\Charting\ChartRenderer;
 use App\Trading\Contracts\TradeExecutorInterface;
@@ -81,6 +82,17 @@ final class PositionManager
     private function attachChart(Position $position, array $candles): void
     {
         if ($this->chart === null) {
+            return;
+        }
+
+        $chartEnabled = (bool) ($this->config['chart']['enabled'] ?? config('trading.chart.enabled', false));
+        if (! $chartEnabled) {
+            return;
+        }
+
+        if ((bool) config('trading.chart.queue', true)) {
+            RenderPositionChartJob::dispatch($position->id, $candles);
+
             return;
         }
 

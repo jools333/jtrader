@@ -106,6 +106,8 @@ return [
     */
     'chart' => [
         'enabled' => (bool) env('TRADING_CHART', false),
+        'queue' => (bool) env('TRADING_CHART_QUEUE', true),
+        'max_concurrent' => (int) env('TRADING_CHART_MAX_CONCURRENT', 1),
         'python_bin' => env('TRADING_CHART_PYTHON', 'python3'),
         'script' => env('TRADING_CHART_SCRIPT', base_path('scripts/render_position.py')),
         'window' => 60, // candles to plot
@@ -120,6 +122,8 @@ return [
     */
     'outcome_chart' => [
         'enabled' => (bool) env('TRADING_OUTCOME_CHART', true),
+        'queue' => (bool) env('TRADING_OUTCOME_CHART_QUEUE', true),
+        'limit' => (int) env('TRADING_OUTCOME_CHART_LIMIT', 5),
         'after_candles' => (int) env('TRADING_OUTCOME_AFTER_CANDLES', 30),
         'before_candles' => (int) env('TRADING_OUTCOME_BEFORE_CANDLES', 40),
     ],

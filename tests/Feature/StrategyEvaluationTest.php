@@ -340,4 +340,67 @@ class StrategyEvaluationTest extends TestCase
         // Clean up test dummy file
         \Illuminate\Support\Facades\File::delete(storage_path('app/public/charts/evaluations/test_recent.png'));
     }
+
+    public function test_render_evaluation_chart_job(): void
+    {
+        $eval = StrategyEvaluation::create([
+            'symbol' => 'BTC-USDT',
+            'interval' => '5m',
+            'strategy' => 'BounceStrategy',
+            'direction' => 'LONG',
+            'status' => 'completed',
+            'score' => 100.0,
+            'passed_count' => 11,
+            'total_count' => 11,
+            'level' => 100.0,
+            'atr' => 10.0,
+            'current_price' => 103.8,
+            'missing_criteria' => [],
+            'criteria_breakdown' => [],
+            'evaluated_at' => now(),
+        ]);
+
+        $candles = $this->baseline(30, 95, 103);
+        config(['trading.chart.enabled' => true]);
+
+        \App\Jobs\RenderEvaluationChartJob::dispatch($eval->id, $candles);
+
+        $eval->refresh();
+        $this->assertNotNull($eval->chart_path);
+        $this->assertFileExists(storage_path("app/public/{$eval->chart_path}"));
+    }
+
+    public function test_render_outcome_chart_job(): void
+    {
+        $candles = $this->baseline(80, 100, 180);
+        $targetTime = $candles[30]->openTime;
+
+        $eval = StrategyEvaluation::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '15m',
+            'strategy' => 'BounceStrategy',
+            'direction' => 'LONG',
+            'status' => 'completed',
+            'score' => 100.0,
+            'passed_count' => 11,
+            'total_count' => 11,
+            'level' => 100.0,
+            'atr' => 10.0,
+            'current_price' => 130.0,
+            'candle_open_time' => $targetTime,
+            'missing_criteria' => [],
+            'criteria_breakdown' => [],
+            'evaluated_at' => now(),
+        ]);
+
+        config(['trading.chart.enabled' => true]);
+        \Illuminate\Support\Facades\Cache::put("outcome_queued_{$eval->id}", true, now()->addMinutes(15));
+
+        \App\Jobs\RenderOutcomeChartJob::dispatch($eval->id, $candles, $targetTime);
+
+        $eval->refresh();
+        $this->assertNotNull($eval->outcome_chart_path);
+        $this->assertFileExists(storage_path("app/public/{$eval->outcome_chart_path}"));
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has("outcome_queued_{$eval->id}"));
+    }
 }
