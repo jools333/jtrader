@@ -30,8 +30,10 @@ Run a single test: `docker compose exec app php artisan test --filter=MarketDash
 
 ## Deployment & CI/CD
 
-Deployment to the remote server (`root@jools.com.ru:/home/jools/jtrader`) is fully automated.
-**It is sufficient to commit and push changes to git (`main` branch)** — the configured CI/CD pipeline automatically pulls and deploys all updates to the server. Manual SSH deployment commands are not needed for normal workflow.
+Deployment to the remote server (`root@jools.com.ru:/home/jools/jtrader`) is fully automated via GitHub Actions CI/CD.
+**CRITICAL RULE: NEVER run manual deploy commands, docker compose up, docker build, or deploy scripts via SSH on root@jools.com.ru.**
+- It is strictly sufficient to **commit and push changes to git (`main` branch)**.
+- GitHub Actions automatically pulls, builds, runs migrations, and restarts services. Manual deployment commands cause race conditions, duplicate builds, and container conflicts.
 
 ## Architecture (the parts that span multiple files)
 
