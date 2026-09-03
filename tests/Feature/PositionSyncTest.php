@@ -149,6 +149,20 @@ class PositionSyncTest extends TestCase
                 'data' => [
                     'orders' => [
                         [
+                            'orderId' => 'order_entry_999',
+                            'symbol' => 'LINK-USDT',
+                            'side' => 'BUY',
+                            'positionSide' => 'LONG',
+                            'type' => 'LIMIT',
+                            'status' => 'FILLED',
+                            'avgPrice' => '11.00',
+                            'executedQty' => '10.0',
+                            'profit' => '0.00',
+                            'commission' => '-0.04',
+                            'time' => 1788400000000,
+                            'updateTime' => 1788400000000,
+                        ],
+                        [
                             'orderId' => 'order_tp_999',
                             'symbol' => 'LINK-USDT',
                             'side' => 'SELL',

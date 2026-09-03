@@ -322,9 +322,26 @@ class BingXPositionSyncService
                 ? Carbon::createFromTimestampMs((int) ($closingOrder['updateTime'] ?? $closingOrder['time']))
                 : null;
 
+            $openedAt = $openingOrder && ! empty($openingOrder['time'])
+                ? Carbon::createFromTimestampMs((int) $openingOrder['time'])
+                : ($closedAt ? $closedAt->copy() : now());
+
+            if ($closedAt !== null && $openedAt->isAfter($closedAt)) {
+                $openedAt = $closedAt->copy();
+            }
+
+            $qty = abs((float) ($openingOrder['executedQty'] ?? $openingOrder['origQty'] ?? $closingOrder['executedQty'] ?? $closingOrder['origQty'] ?? 0.0));
             $entryPrice = (float) ($openingOrder['avgPrice'] ?? $openingOrder['price'] ?? 0.0);
-            $qty = abs((float) ($openingOrder['executedQty'] ?? $openingOrder['origQty'] ?? 0.0));
             $exitPrice = $closingOrder ? (float) ($closingOrder['avgPrice'] ?? $closingOrder['price'] ?? 0.0) : null;
+
+            // If opening price wasn't recorded in opening order, reconstruct from profit and exit price
+            if ($entryPrice <= 0.0 && $exitPrice !== null && $qty > 0.0 && $realizedPnl != 0.0) {
+                if ($dir === 'LONG') {
+                    $entryPrice = $exitPrice - ($realizedPnl / $qty);
+                } else {
+                    $entryPrice = $exitPrice + ($realizedPnl / $qty);
+                }
+            }
             $leverage = $openingOrder && ! empty($openingOrder['leverage']) ? (int) filter_var($openingOrder['leverage'], FILTER_SANITIZE_NUMBER_INT) : null;
 
             $exitType = null;
@@ -345,14 +362,32 @@ class BingXPositionSyncService
 
             if ($existing) {
                 $changed = false;
-                if ($existing->commission == 0.0 && $totalCommission > 0.0) {
+                if ($closedAt !== null && $existing->opened_at && $existing->opened_at->isAfter($closedAt)) {
+                    $existing->opened_at = $openedAt;
+                    $changed = true;
+                }
+                if ($existing->entry_price <= 0.0 && $entryPrice > 0.0) {
+                    $existing->entry_price = $entryPrice;
+                    $changed = true;
+                }
+                if ($existing->quantity <= 0.0 && $qty > 0.0) {
+                    $existing->quantity = $qty;
+                    $changed = true;
+                }
+                if ($totalCommission > 0.0 && abs(($existing->commission ?? 0.0) - $totalCommission) > 0.0001) {
                     $existing->commission = $totalCommission;
+                    $changed = true;
+                }
+                if ($closingOrder && $realizedPnl != 0.0 && abs(($existing->realized_pnl ?? 0.0) - $realizedPnl) > 0.0001) {
+                    $existing->realized_pnl = $realizedPnl;
+                    $changed = true;
+                }
+                if ($closingOrder && $exitPrice !== null && abs(($existing->exit_price ?? 0.0) - $exitPrice) > 0.0001) {
+                    $existing->exit_price = $exitPrice;
                     $changed = true;
                 }
                 if ($closingOrder && $existing->status !== Position::STATUS_CLOSED) {
                     $existing->status = Position::STATUS_CLOSED;
-                    $existing->exit_price = $exitPrice;
-                    $existing->realized_pnl = $realizedPnl;
                     $existing->closed_at = $closedAt;
                     $existing->exit_type = $exitType;
                     $existing->exit_reason = $exitReason;
@@ -456,6 +491,7 @@ class BingXPositionSyncService
         $closingOrder = null;
         $totalCommission = 0.0;
         $realizedPnlFromOrders = null;
+        $endTime = $pos->closed_at ? (int) $pos->closed_at->copy()->addMinutes(15)->getTimestampMs() : null;
 
         foreach ($orders as $order) {
             $status = (string) ($order['status'] ?? '');
@@ -470,14 +506,19 @@ class BingXPositionSyncService
             $orderProfit = (float) ($order['profit'] ?? 0.0);
             $orderTime = (int) ($order['updateTime'] ?? $order['time'] ?? 0);
 
-            // Check if this order belongs to our position
+            // Strict position matching:
+            // If positionID is known, ONLY match orders belonging to this exact positionID!
             $isSamePosition = false;
-            if ($matchedPositionId !== null && $orderPosId !== null && $orderPosId === $matchedPositionId) {
-                $isSamePosition = true;
-            } elseif ($orderTime >= $startTime) {
-                // If positionID didn't match, check by direction and symbol
-                if (empty($orderPosSide) || $orderPosSide === $pos->direction) {
+            if ($matchedPositionId !== null) {
+                if ($orderPosId !== null && $orderPosId === $matchedPositionId) {
                     $isSamePosition = true;
+                }
+            } else {
+                // If positionID is not known, match strictly within opened_at and closed_at time window
+                if ($orderTime >= $startTime && ($endTime === null || $orderTime <= $endTime)) {
+                    if (empty($orderPosSide) || $orderPosSide === $pos->direction) {
+                        $isSamePosition = true;
+                    }
                 }
             }
 
@@ -506,6 +547,12 @@ class BingXPositionSyncService
         foreach ($incomeRecords as $item) {
             $type = (string) ($item['incomeType'] ?? '');
             $amount = (float) ($item['income'] ?? 0.0);
+            $itemTime = (int) ($item['time'] ?? 0);
+
+            // Only consider income within the position's lifespan
+            if ($endTime !== null && $itemTime > $endTime) {
+                continue;
+            }
 
             if ($type === 'REALIZED_PNL') {
                 $realizedPnlFromIncome = ($realizedPnlFromIncome ?? 0.0) + $amount;
@@ -517,7 +564,7 @@ class BingXPositionSyncService
         }
 
         $finalPnl = $realizedPnlFromOrders ?? $realizedPnlFromIncome ?? $pos->realized_pnl;
-        $finalFees = max($totalCommission, $feesFromIncome);
+        $finalFees = $totalCommission > 0.0 ? $totalCommission : $feesFromIncome;
 
         $exitPrice = null;
         $exitType = null;
