@@ -169,27 +169,61 @@ class BingXPositionSyncService
             }
         }
 
-        // 5. Update commissions / exact PnL for recently closed positions that were not synced yet
+        // 5. Update commissions / exact PnL for recently closed positions that were not synced yet or have 0 fees
         $recentlyClosed = Position::query()
             ->where('status', Position::STATUS_CLOSED)
-            ->whereNull('synced_at')
+            ->where(function ($q) {
+                $q->whereNull('synced_at')
+                    ->orWhere('commission', 0.0);
+            })
             ->where('closed_at', '>=', now()->subDays($lookbackDays))
             ->when($targetSymbol, fn ($q) => $q->where('symbol', $targetSymbol))
             ->get();
 
         foreach ($recentlyClosed as $cPos) {
             $closeData = $this->resolveClosedPositionData($cPos, $lookbackDays);
-            if (! $dryRun) {
-                $cPos->update([
-                    'realized_pnl' => $closeData['realized_pnl'] ?? $cPos->realized_pnl,
-                    'commission' => $closeData['commission'] ?? $cPos->commission,
-                    'funding_fee' => $closeData['funding_fee'] ?? $cPos->funding_fee,
-                    'exit_price' => $closeData['exit_price'] ?? $cPos->exit_price,
-                    'synced_at' => now(),
-                ]);
+            $changed = false;
+            if ($closeData['realized_pnl'] !== null && abs(($cPos->realized_pnl ?? 0.0) - $closeData['realized_pnl']) > 0.0001) {
+                $cPos->realized_pnl = $closeData['realized_pnl'];
+                $changed = true;
             }
-            $result->updated++;
-            $result->messages[] = "Refreshed exchange fees for closed position {$cPos->symbol} #{$cPos->id}";
+            if ($closeData['commission'] > 0.0 && abs(($cPos->commission ?? 0.0) - $closeData['commission']) > 0.0001) {
+                $cPos->commission = $closeData['commission'];
+                $changed = true;
+            }
+            if ($closeData['funding_fee'] != 0.0 && abs(($cPos->funding_fee ?? 0.0) - $closeData['funding_fee']) > 0.0001) {
+                $cPos->funding_fee = $closeData['funding_fee'];
+                $changed = true;
+            }
+            if ($closeData['exit_price'] !== null && abs(($cPos->exit_price ?? 0.0) - $closeData['exit_price']) > 0.0001) {
+                $cPos->exit_price = $closeData['exit_price'];
+                $changed = true;
+            }
+            if ($closeData['exit_order_id'] && $cPos->exit_order_id !== $closeData['exit_order_id']) {
+                $cPos->exit_order_id = $closeData['exit_order_id'];
+                $changed = true;
+            }
+            if ($closeData['exit_type'] && $cPos->exit_type !== $closeData['exit_type']) {
+                $cPos->exit_type = $closeData['exit_type'];
+                $changed = true;
+            }
+
+            $cPos->synced_at = now();
+            if (! $dryRun) {
+                $cPos->save();
+            }
+
+            if ($changed) {
+                $result->updated++;
+                $result->messages[] = sprintf(
+                    'Refreshed exchange fees for closed position %s #%d: exit=%.4f, pnl=%.4f, fee=%.4f',
+                    $cPos->symbol,
+                    $cPos->id,
+                    $cPos->exit_price ?? 0.0,
+                    $cPos->realized_pnl ?? 0.0,
+                    $cPos->commission ?? 0.0
+                );
+            }
         }
 
         return $result;
