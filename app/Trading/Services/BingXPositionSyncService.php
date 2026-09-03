@@ -467,6 +467,20 @@ class BingXPositionSyncService
      */
     private function resolveClosedPositionData(Position $pos, int $lookbackDays): array
     {
+        // If the position was never executed on exchange (e.g. signal error), do not match exchange orders!
+        if (empty($pos->entry_order_id) && empty($pos->external_id)) {
+            return [
+                'exit_price' => $pos->exit_price,
+                'realized_pnl' => $pos->realized_pnl,
+                'commission' => 0.0,
+                'funding_fee' => 0.0,
+                'exit_type' => $pos->exit_type,
+                'exit_reason' => $pos->exit_reason,
+                'exit_order_id' => null,
+                'closed_at' => $pos->closed_at,
+            ];
+        }
+
         $symbol = $pos->symbol;
         $isLong = $pos->direction === Direction::Long->value;
         $expectedClosingSide = $isLong ? 'SELL' : 'BUY';
@@ -491,7 +505,9 @@ class BingXPositionSyncService
         $closingOrder = null;
         $totalCommission = 0.0;
         $realizedPnlFromOrders = null;
-        $endTime = $pos->closed_at ? (int) $pos->closed_at->copy()->addMinutes(15)->getTimestampMs() : null;
+        $endTime = $pos->closed_at
+            ? (int) $pos->closed_at->copy()->addMinutes(15)->getTimestampMs()
+            : ($pos->opened_at ? (int) $pos->opened_at->copy()->addHours(6)->getTimestampMs() : null);
 
         foreach ($orders as $order) {
             $status = (string) ($order['status'] ?? '');

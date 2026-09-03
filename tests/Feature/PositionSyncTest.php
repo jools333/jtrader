@@ -134,6 +134,7 @@ class PositionSyncTest extends TestCase
             'target2' => 13.0,
             'quantity' => 10.0,
             'size' => 1.0,
+            'entry_order_id' => 'order_entry_999',
             'opened_at' => \Illuminate\Support\Carbon::createFromTimestampMs(1788400000000),
         ]);
 
