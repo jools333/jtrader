@@ -74,5 +74,11 @@ class TradingServiceProvider extends ServiceProvider
             manager: $app->make(PositionManager::class),
             config: (array) config('trading.agent'),
         ));
+
+        $this->app->singleton(\App\Trading\Services\BingXPositionSyncService::class, fn (Application $app) => new \App\Trading\Services\BingXPositionSyncService(
+            http: $app->make(HttpFactory::class),
+            config: (array) config('exchange.drivers.bingx'),
+            chart: $app->make(ChartRenderer::class),
+        ));
     }
 }

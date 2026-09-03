@@ -174,6 +174,26 @@ class PositionResource extends Resource
                     ->placeholder('—')
                     ->sortable(),
 
+                TextColumn::make('commission')
+                    ->label('Комиссия')
+                    ->numeric(decimalPlaces: 4)
+                    ->color('gray')
+                    ->placeholder('—')
+                    ->toggleable(),
+
+                TextColumn::make('net_pnl')
+                    ->label('Чистый P&L')
+                    ->state(fn (Position $record): ?float => $record->netPnl())
+                    ->numeric(decimalPlaces: 4)
+                    ->color(fn (?float $state): string => match (true) {
+                        $state === null => 'gray',
+                        $state > 0      => 'success',
+                        $state < 0      => 'danger',
+                        default         => 'gray',
+                    })
+                    ->placeholder('—')
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderByRaw('COALESCE(realized_pnl, 0) - COALESCE(commission, 0) - COALESCE(funding_fee, 0) ' . $direction)),
+
                 TextColumn::make('exit_type')
                     ->label('Причина')
                     ->badge()
@@ -204,6 +224,12 @@ class PositionResource extends Resource
                     ->dateTime('d.m.Y H:i')
                     ->sortable()
                     ->placeholder('—'),
+
+                TextColumn::make('synced_at')
+                    ->label('Синхр.')
+                    ->dateTime('d.m H:i')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('status')

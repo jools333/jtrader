@@ -23,4 +23,8 @@ Schedule::command('strategy:prune')
     ->daily()
     ->withoutOverlapping(60);
 
+Schedule::command('positions:sync')
+    ->everyMinute()
+    ->withoutOverlapping(2);
+
 

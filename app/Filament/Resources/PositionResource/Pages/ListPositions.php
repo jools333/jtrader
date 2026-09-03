@@ -45,6 +45,19 @@ class ListPositions extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            \Filament\Actions\Action::make('sync')
+                ->label('Синхронизировать с BingX')
+                ->icon('heroicon-o-arrow-path')
+                ->color('primary')
+                ->action(function (\App\Trading\Services\BingXPositionSyncService $syncService) {
+                    $res = $syncService->sync();
+                    \Filament\Notifications\Notification::make()
+                        ->title('Синхронизация с BingX завершена')
+                        ->body("Импортировано: {$res->imported}, Закрыто на бирже: {$res->closed}, Обновлено: {$res->updated}")
+                        ->success()
+                        ->send();
+                }),
+        ];
     }
 }
