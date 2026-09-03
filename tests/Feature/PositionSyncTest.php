@@ -235,4 +235,68 @@ class PositionSyncTest extends TestCase
             ->assertSuccessful()
             ->expectsOutputToContain('Position synchronization finished.');
     }
+
+    public function test_sync_imports_past_closed_position_from_order_history(): void
+    {
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response(['code' => 0, 'data' => []]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'bnb_order_1',
+                            'positionID' => 'bnb_pos_99',
+                            'symbol' => 'BNB-USDT',
+                            'side' => 'BUY',
+                            'positionSide' => 'LONG',
+                            'type' => 'LIMIT',
+                            'status' => 'FILLED',
+                            'avgPrice' => '713.29',
+                            'executedQty' => '6.4',
+                            'profit' => '0.00',
+                            'commission' => '-0.91',
+                            'time' => 1788439420000,
+                        ],
+                        [
+                            'orderId' => 'bnb_order_2',
+                            'positionID' => 'bnb_pos_99',
+                            'symbol' => 'BNB-USDT',
+                            'side' => 'SELL',
+                            'positionSide' => 'LONG',
+                            'type' => 'STOP_MARKET',
+                            'status' => 'FILLED',
+                            'avgPrice' => '707.71',
+                            'profit' => '-35.65',
+                            'commission' => '-2.26',
+                            'reduceOnly' => true,
+                            'time' => 1788441667000,
+                            'updateTime' => 1788441667000,
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/user/income*' => Http::response(['code' => 0, 'data' => []]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync(targetSymbol: 'BNB-USDT');
+
+        $this->assertEquals(1, $result->imported);
+        $this->assertDatabaseHas('positions', [
+            'symbol' => 'BNB-USDT',
+            'direction' => 'LONG',
+            'status' => 'closed',
+            'signal_type' => 'EXTERNAL',
+            'entry_price' => 713.29,
+            'exit_price' => 707.71,
+            'realized_pnl' => -35.65,
+            'commission' => 3.17,
+            'external_id' => 'bnb_pos_99',
+        ]);
+    }
 }

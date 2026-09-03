@@ -226,7 +226,194 @@ class BingXPositionSyncService
             }
         }
 
+        // 6. Reconcile and import past positions directly from BingX order history
+        $symbols = $targetSymbol ? [$targetSymbol] : (array) config('exchange.pairs', []);
+        foreach ($symbols as $sym) {
+            $this->reconcileOrdersForSymbol($sym, $lookbackDays, $dryRun, $result);
+        }
+
         return $result;
+    }
+
+    /**
+     * Inspect order history for a symbol, grouping by positionID to import any missing trades.
+     */
+    private function reconcileOrdersForSymbol(string $symbol, int $lookbackDays, bool $dryRun, PositionSyncResult $result): void
+    {
+        $startTime = (int) now()->subDays($lookbackDays)->getTimestampMs();
+        $orders = $this->fetchOrders($symbol, $startTime);
+        if (empty($orders)) {
+            return;
+        }
+
+        // Group filled orders by positionID
+        $byPositionId = [];
+        foreach ($orders as $order) {
+            if (($order['status'] ?? '') !== 'FILLED') {
+                continue;
+            }
+            $posId = ! empty($order['positionID']) ? (string) $order['positionID'] : null;
+            if ($posId === null || $posId === '0') {
+                continue;
+            }
+            $byPositionId[$posId][] = $order;
+        }
+
+        foreach ($byPositionId as $posId => $posOrders) {
+            $openingOrder = null;
+            $closingOrder = null;
+            $totalCommission = 0.0;
+            $realizedPnl = 0.0;
+            $dir = null;
+
+            foreach ($posOrders as $o) {
+                $posSide = strtoupper((string) ($o['positionSide'] ?? ''));
+                if (in_array($posSide, ['LONG', 'SHORT'], true)) {
+                    $dir = $posSide;
+                }
+                $side = strtoupper((string) ($o['side'] ?? ''));
+                $isOpeningSide = ($dir === 'LONG' && $side === 'BUY') || ($dir === 'SHORT' && $side === 'SELL');
+                $totalCommission += abs((float) ($o['commission'] ?? 0.0));
+
+                if (! empty($o['profit']) && (float) $o['profit'] != 0.0) {
+                    $realizedPnl = (float) $o['profit'];
+                }
+
+                $isClosing = ! empty($o['reduceOnly'])
+                    || ((float) ($o['profit'] ?? 0.0) != 0.0)
+                    || in_array($o['type'] ?? '', ['TAKE_PROFIT_MARKET', 'STOP_MARKET', 'STOP', 'TAKE_PROFIT'], true)
+                    || (! $isOpeningSide);
+
+                if ($isClosing) {
+                    if ($closingOrder === null || (int) ($o['updateTime'] ?? $o['time'] ?? 0) > (int) ($closingOrder['updateTime'] ?? $closingOrder['time'] ?? 0)) {
+                        $closingOrder = $o;
+                    }
+                } else {
+                    if ($openingOrder === null || (int) ($o['time'] ?? 0) < (int) ($openingOrder['time'] ?? 0)) {
+                        $openingOrder = $o;
+                    }
+                }
+            }
+
+            if ($dir === null && $openingOrder !== null) {
+                $dir = strtoupper((string) ($openingOrder['positionSide'] ?? ''));
+            }
+            if (! in_array($dir, ['LONG', 'SHORT'], true)) {
+                continue;
+            }
+
+            // Check if already in DB
+            $existing = Position::query()
+                ->where('external_id', $posId)
+                ->orWhere(function ($q) use ($openingOrder, $closingOrder) {
+                    if ($openingOrder && ! empty($openingOrder['orderId'])) {
+                        $q->where('entry_order_id', (string) $openingOrder['orderId']);
+                    }
+                    if ($closingOrder && ! empty($closingOrder['orderId'])) {
+                        $q->orWhere('exit_order_id', (string) $closingOrder['orderId']);
+                    }
+                })
+                ->first();
+
+            $openedAt = $openingOrder && ! empty($openingOrder['time'])
+                ? Carbon::createFromTimestampMs((int) $openingOrder['time'])
+                : now();
+            $closedAt = $closingOrder && ! empty($closingOrder['updateTime'] ?? $closingOrder['time'])
+                ? Carbon::createFromTimestampMs((int) ($closingOrder['updateTime'] ?? $closingOrder['time']))
+                : null;
+
+            $entryPrice = (float) ($openingOrder['avgPrice'] ?? $openingOrder['price'] ?? 0.0);
+            $qty = abs((float) ($openingOrder['executedQty'] ?? $openingOrder['origQty'] ?? 0.0));
+            $exitPrice = $closingOrder ? (float) ($closingOrder['avgPrice'] ?? $closingOrder['price'] ?? 0.0) : null;
+            $leverage = $openingOrder && ! empty($openingOrder['leverage']) ? (int) filter_var($openingOrder['leverage'], FILTER_SANITIZE_NUMBER_INT) : null;
+
+            $exitType = null;
+            $exitReason = null;
+            if ($closingOrder) {
+                $rawType = (string) ($closingOrder['type'] ?? 'MARKET');
+                if (in_array($rawType, ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT'], true)) {
+                    $exitType = ExitType::Target1->value;
+                    $exitReason = 'take_profit_hit';
+                } elseif (in_array($rawType, ['STOP_MARKET', 'STOP'], true)) {
+                    $exitType = ExitType::StopLoss->value;
+                    $exitReason = 'stop_loss_hit';
+                } else {
+                    $exitType = 'MARKET';
+                    $exitReason = 'exchange_closed';
+                }
+            }
+
+            if ($existing) {
+                $changed = false;
+                if ($existing->commission == 0.0 && $totalCommission > 0.0) {
+                    $existing->commission = $totalCommission;
+                    $changed = true;
+                }
+                if ($closingOrder && $existing->status !== Position::STATUS_CLOSED) {
+                    $existing->status = Position::STATUS_CLOSED;
+                    $existing->exit_price = $exitPrice;
+                    $existing->realized_pnl = $realizedPnl;
+                    $existing->closed_at = $closedAt;
+                    $existing->exit_type = $exitType;
+                    $existing->exit_reason = $exitReason;
+                    $existing->exit_order_id = (string) $closingOrder['orderId'];
+                    $changed = true;
+                }
+                if ($existing->external_id !== $posId) {
+                    $existing->external_id = $posId;
+                    $changed = true;
+                }
+                if ($changed) {
+                    $existing->synced_at = now();
+                    if (! $dryRun) {
+                        $existing->save();
+                    }
+                    $result->updated++;
+                    $result->messages[] = "Updated position from order history: {$symbol} #{$existing->id}";
+                }
+            } else {
+                // Completely new position to import!
+                if (! $dryRun) {
+                    Position::create([
+                        'symbol' => $symbol,
+                        'interval' => (string) config('exchange.default_timeframe', '5m'),
+                        'direction' => $dir,
+                        'signal_type' => 'EXTERNAL',
+                        'status' => $closingOrder ? Position::STATUS_CLOSED : Position::STATUS_OPEN,
+                        'entry_price' => $entryPrice > 0.0 ? $entryPrice : 0.0,
+                        'stop_price' => 0.0,
+                        'target1' => 0.0,
+                        'target2' => 0.0,
+                        'quantity' => $qty,
+                        'size' => 1.0,
+                        'leverage' => $leverage,
+                        'exit_price' => $exitPrice,
+                        'realized_pnl' => $closingOrder ? $realizedPnl : null,
+                        'commission' => $totalCommission,
+                        'exit_type' => $exitType,
+                        'exit_reason' => $exitReason,
+                        'entry_order_id' => $openingOrder ? (string) $openingOrder['orderId'] : null,
+                        'exit_order_id' => $closingOrder ? (string) $closingOrder['orderId'] : null,
+                        'external_id' => $posId,
+                        'opened_at' => $openedAt,
+                        'closed_at' => $closedAt,
+                        'synced_at' => now(),
+                    ]);
+                }
+                $result->imported++;
+                $result->messages[] = sprintf(
+                    'Imported %s position %s %s: entry=%.4f, exit=%s, pnl=%.4f, fee=%.4f (net=%.4f)',
+                    $closingOrder ? 'closed' : 'open',
+                    $symbol,
+                    $dir,
+                    $entryPrice,
+                    $exitPrice ? sprintf('%.4f', $exitPrice) : '—',
+                    $realizedPnl,
+                    $totalCommission,
+                    $realizedPnl - $totalCommission
+                );
+            }
+        }
     }
 
     /**
