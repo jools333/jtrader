@@ -28,8 +28,7 @@ final class BounceStrategy implements EntryStrategyInterface
         private readonly float $bounceReversalAtr = 0.10,
         private readonly float $minAtrPercent = 0.20,
         private readonly float $stopBufferAtr = 0.25,
-    ) {
-    }
+    ) {}
 
     public function evaluate(RuleContext $ctx, TradePlanner $planner): ?EntrySignal
     {
@@ -80,10 +79,10 @@ final class BounceStrategy implements EntryStrategyInterface
         $missing = [];
 
         // 1. Подход к уровню поддержки
-        $minLow = min(array_map(static fn (Candle $c) => $c->low, $window));
+        $minLow = min(array_map(static fn(Candle $c) => $c->low, $window));
         // Зона поддержки: от L - 0.5 ATR до L + 0.5 ATR
         $passedApproach = $minLow <= $level + $atr * $this->levelApproachAtr && $minLow >= $level - $atr * $this->levelApproachAtr;
-        
+
         $criteria['level_approach'] = new CriterionResult(
             key: 'level_approach',
             name: 'Подход к уровню поддержки',
@@ -100,7 +99,7 @@ final class BounceStrategy implements EntryStrategyInterface
         // 2. Отбой на 10% от ATR вверх от минимальной цены
         $reqBounce = $minLow + $atr * $this->bounceReversalAtr;
         $passedBounce = $last->close >= $reqBounce;
-        
+
         $criteria['atr_bounce'] = new CriterionResult(
             key: 'atr_bounce',
             name: 'Отбой от минимума на 10% ATR',
@@ -117,7 +116,7 @@ final class BounceStrategy implements EntryStrategyInterface
         // 3. Нормальный уровень ATR
         $minAtr = $last->close * ($this->minAtrPercent / 100.0);
         $passedNormalAtr = $atr > $minAtr;
-        
+
         $criteria['normal_atr'] = new CriterionResult(
             key: 'normal_atr',
             name: 'Нормальный уровень ATR',
@@ -164,7 +163,7 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         $total = count($criteria);
-        $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
+        $passed = count(array_filter($criteria, static fn(CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
@@ -203,10 +202,10 @@ final class BounceStrategy implements EntryStrategyInterface
         $missing = [];
 
         // 1. Подход к уровню сопротивления
-        $maxHigh = max(array_map(static fn (Candle $c) => $c->high, $window));
+        $maxHigh = max(array_map(static fn(Candle $c) => $c->high, $window));
         // Зона сопротивления: от L - 0.5 ATR до L + 0.5 ATR
         $passedApproach = $maxHigh >= $level - $atr * $this->levelApproachAtr && $maxHigh <= $level + $atr * $this->levelApproachAtr;
-        
+
         $criteria['level_approach'] = new CriterionResult(
             key: 'level_approach',
             name: 'Подход к уровню сопротивления',
@@ -223,7 +222,7 @@ final class BounceStrategy implements EntryStrategyInterface
         // 2. Отбой на 10% от ATR вниз от максимальной цены
         $reqBounce = $maxHigh - $atr * $this->bounceReversalAtr;
         $passedBounce = $last->close <= $reqBounce;
-        
+
         $criteria['atr_bounce'] = new CriterionResult(
             key: 'atr_bounce',
             name: 'Отбой от максимума на 10% ATR',
@@ -240,7 +239,7 @@ final class BounceStrategy implements EntryStrategyInterface
         // 3. Нормальный уровень ATR
         $minAtr = $last->close * ($this->minAtrPercent / 100.0);
         $passedNormalAtr = $atr > $minAtr;
-        
+
         $criteria['normal_atr'] = new CriterionResult(
             key: 'normal_atr',
             name: 'Нормальный уровень ATR',
@@ -256,16 +255,18 @@ final class BounceStrategy implements EntryStrategyInterface
 
         // 4. Строгий фильтр тренда для SHORT (EMA8 должна падать, цена ниже EMA50)
         $passedTrend = $ctx->ema8Falling() && $last->close < $ctx->ema50At($ctx->i);
-        
+
         $criteria['strict_trend'] = new CriterionResult(
             key: 'strict_trend',
             name: 'Тренд вниз (EMA8 падает, цена < EMA50)',
             passed: $passedTrend,
             expected: 'EMA8 падает, цена < EMA50',
-            actual: sprintf('EMA8 Falling: %s, Price %.4f vs EMA50 %.4f', 
-                $ctx->ema8Falling() ? 'Yes' : 'No', 
-                $last->close, 
-                $ctx->ema50At($ctx->i)),
+            actual: sprintf(
+                'EMA8 Falling: %s, Price %.4f vs EMA50 %.4f',
+                $ctx->ema8Falling() ? 'Yes' : 'No',
+                $last->close,
+                $ctx->ema50At($ctx->i)
+            ),
             actualValue: $last->close,
             thresholdValue: $ctx->ema50At($ctx->i),
         );
@@ -306,7 +307,7 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         $total = count($criteria);
-        $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
+        $passed = count(array_filter($criteria, static fn(CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
