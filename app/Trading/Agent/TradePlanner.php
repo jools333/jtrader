@@ -41,28 +41,44 @@ final class TradePlanner
         // Защитный "катастрофический" стоп-лосс на случай краха рынка
         $stopPct = $this->cfg('catastrophic_stop_percent', 2.0) / 100.0;
         
-        // TP фиксирован на процент от цены входа
+        // TP фиксирован на процент от цены входа (по умолчанию 0.35% чистой прибыли)
         $tpPercent = $type === SignalType::BtcLeadLag
             ? $this->cfg('lead_lag_tp_percent', 0.40) / 100.0
-            : $this->cfg('tp_percent', 0.1) / 100.0;
+            : $this->cfg('tp_percent', 0.35) / 100.0;
         $tpMultiplier = $this->cfg('tp_multiplier', 2.0);
         
-        // Учитываем комиссии BingX. Вход теперь LIMIT (Maker), выход TP - MARKET (Taker)
+        // Учитываем комиссии BingX. Вход LIMIT (Maker), выход TP - MARKET (Taker)
         $makerFee = $this->cfg('fee_maker_percent', 0.02) / 100.0;
         $takerFee = $this->cfg('fee_taker_percent', 0.05) / 100.0;
         $totalFeePercent = $takerFee + $makerFee; // 0.07%
         
-        // Итоговая дистанция включает желаемый профит и компенсацию комиссий
-        $tpDistance = $entry * ($tpPercent + $totalFeePercent);
+        // Минимальная дистанция тейка для надежного покрытия комиссий и получения прибыли
+        $minTpDistance = $entry * ($tpPercent + $totalFeePercent);
 
-        // Стоп-лосс: для BtcLeadLag используем ATR стоп (если доступен), иначе процент от цены
-        $stopDistance = ($type === SignalType::BtcLeadLag && $ctx->atr > 0.0)
-            ? min($entry * $stopPct, $ctx->atr * $this->cfg('lead_lag_stop_atr', 1.0))
-            : ($entry * $stopPct);
-
+        // Стоп-лосс: если передана техническая цена стопа (от BounceStrategy) — используем её
         if ($stopPrice !== null) {
             $stopDistance = abs($entry - $stopPrice);
+        } elseif ($type === SignalType::BtcLeadLag && $ctx->atr > 0.0) {
+            $stopDistance = min($entry * $stopPct, $ctx->atr * $this->cfg('lead_lag_stop_atr', 1.0));
+        } else {
+            $stopDistance = ($ctx->atr > 0.0)
+                ? min($entry * $stopPct, $ctx->atr * $this->cfg('stop_atr', 1.0))
+                : ($entry * $stopPct);
         }
+
+        // Защита: дистанция стопа не должна превышать максимальный порог (2% или 2 ATR)
+        $maxStopDistance = max($entry * $stopPct, $ctx->atr > 0.0 ? $ctx->atr * 2.0 : 0.0);
+        if ($maxStopDistance > 0.0) {
+            $stopDistance = min($stopDistance, $maxStopDistance);
+        }
+
+        // Минимальная дистанция стопа от микро-значений (0.1% от цены)
+        $minStopDistance = $entry * 0.001;
+        $stopDistance = max($stopDistance, $minStopDistance);
+
+        // Дистанция тейк-профита с учетом целевого R:R (target1_r, по умолчанию 2.0R)
+        $target1R = $this->cfg('target1_r', 2.0);
+        $tpDistance = max($minTpDistance, $stopDistance * $target1R);
 
         // Расчет для позиции LONG (покупка)
         if ($dir === Direction::Long) {
@@ -76,8 +92,8 @@ final class TradePlanner
             $target2 = $entry - ($tpDistance * $tpMultiplier);
         }
 
-        // Задаем искусственный R:R, чтобы всегда проходить фильтр в TradingAgent
-        $rrRatio = 999.0;
+        // Рассчитываем фактический R:R для Target 1
+        $rrRatio = $stopDistance > 0.0 ? round($tpDistance / $stopDistance, 2) : $target1R;
 
         // Создаем и возвращаем DTO сигнала на вход с рассчитанными параметрами
         return new EntrySignal(

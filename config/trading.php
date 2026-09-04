@@ -80,16 +80,17 @@ return [
         'bounce_level_approach_atr' => 0.50, // Допустимая зона от уровня (в ATR)
         'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
+        'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
         
         // Настройки тейк-профита, комиссий и защитного стопа
-        'tp_percent' => 0.10,             // Чистый профит Target 1 (50% объема) в процентах от цены
+        'tp_percent' => (float) env('TRADING_TP_PCT', 0.35),             // Чистый профит Target 1 (50% объема) в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
         'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)
 
         // Настройки BtcLeadLagStrategy (опережающе-запаздывающий арбитраж за BTC)
-        'lead_lag_enabled' => (bool) env('TRADING_LEAD_LAG_ENABLED', true),
+        'lead_lag_enabled' => (bool) env('TRADING_LEAD_LAG_ENABLED', false),
         'lead_lag_btc_impulse_pct' => (float) env('TRADING_LEAD_LAG_BTC_IMPULSE_PCT', 0.40), // мин. импульс BTC (%) за 1-2 свечи
         'lead_lag_min_gap_pct' => (float) env('TRADING_LEAD_LAG_MIN_GAP_PCT', 0.25),         // мин. запаздывание альта относительно BTC (%)
         'lead_lag_cooldown_minutes' => (int) env('TRADING_LEAD_LAG_COOLDOWN_MINUTES', 5),    // кулдаун между импульсами (мин)

@@ -78,7 +78,7 @@ final class TradingAgent implements TradingAgentInterface
         $this->guard = $guard ?? new EntryGuard($this->config);
 
         // Регистрация набора стратегий входа по умолчанию
-        $leadLagEnabled = (bool) ($this->config['lead_lag_enabled'] ?? true);
+        $leadLagEnabled = (bool) ($this->config['lead_lag_enabled'] ?? false);
         $defaultStrategies = [
             new BounceStrategy(
                 logger: $logger,
@@ -87,6 +87,7 @@ final class TradingAgent implements TradingAgentInterface
                 levelApproachAtr: (float) ($this->config['bounce_level_approach_atr'] ?? 0.50),
                 bounceReversalAtr: (float) ($this->config['bounce_reversal_atr'] ?? 0.10),
                 minAtrPercent: (float) ($this->config['bounce_min_atr_percent'] ?? 0.20),
+                stopBufferAtr: (float) ($this->config['bounce_stop_atr_buffer'] ?? 0.25),
             ),
         ];
 

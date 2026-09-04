@@ -44,7 +44,7 @@ final class BtcImpulseDetector
      */
     public function onBtcTick(Candle $candle): void
     {
-        $enabled = (bool) ($this->config['lead_lag_enabled'] ?? true);
+        $enabled = (bool) ($this->config['lead_lag_enabled'] ?? false);
         if (! $enabled) {
             return;
         }

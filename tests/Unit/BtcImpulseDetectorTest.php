@@ -144,4 +144,36 @@ class BtcImpulseDetectorTest extends TestCase
 
         $this->assertTrue(true);
     }
+
+    public function test_no_scan_when_lead_lag_disabled(): void
+    {
+        $exchange = Mockery::mock(ExchangeInterface::class);
+        $repo = new CandleRepository($exchange);
+        $analyzer = Mockery::mock(MarketAnalyzerInterface::class);
+        $agent = Mockery::mock(TradingAgentInterface::class);
+        $executor = Mockery::mock(TradeExecutorInterface::class);
+        $manager = new PositionManager($agent, $executor);
+
+        // lead_lag_enabled omitted (defaults to false) or explicitly false
+        $detector = new BtcImpulseDetector(
+            candlesRepo: $repo,
+            analyzer: $analyzer,
+            manager: $manager,
+            config: [
+                'lead_lag_enabled' => false,
+                'lead_lag_btc_impulse_pct' => 0.40,
+            ],
+        );
+
+        // Huge BTC dump -2.0%
+        $candle = new Candle(1_700_000_000, 80000.0, 80000.0, 78400.0, 78400.0, 50.0, 1_700_059_999);
+
+        // Should NOT evaluate or check anything
+        $agent->shouldNotReceive('evaluate');
+        $analyzer->shouldNotReceive('atr');
+
+        $detector->onBtcTick($candle);
+
+        $this->assertFalse(Cache::has(BtcImpulseDetector::COOLDOWN_KEY));
+    }
 }

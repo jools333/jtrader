@@ -126,12 +126,12 @@ Trading logic is located in `app/Trading/`:
   - *Single Position per Symbol*: prevents accumulating duplicate legs across intervals.
   - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=30` prevents re-entering the same symbol for 30 minutes after close.
 - **Active Entry Strategies Status**:
-  - `BounceStrategy`: Multi-candle Price Action bounce setup from key horizontal levels (12 criteria, high R:R).
-  - `BtcLeadLagStrategy`: Cross-asset momentum spillover / lead-lag entry following sharp BTC impulses ($\ge 0.40\%$) entering lagging altcoins (lag gap $\ge 0.25\%$) with Relative Strength Guard. Registered in `TradingAgent::__construct()`.
+  - `BounceStrategy`: Multi-candle Price Action bounce setup from key horizontal levels with technical Stop Loss placed beyond support/resistance ($L \pm 0.25 \times \text{ATR}$) and calibrated Take Profit ($R:R \ge 2.0$, ensuring fees are well covered). The only active entry strategy.
+  - `BtcLeadLagStrategy`: Cross-asset momentum spillover / lead-lag entry following BTC impulses. Disabled (`TRADING_LEAD_LAG_ENABLED=false`) due to correlation risk on multi-asset cascade entries during false BTC breakouts.
   - The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
 - **Real-Time WebSocket Impulse Trigger (`BtcImpulseDetector`)**:
   - `WsCandles` streams live `BTC-USDT@kline_1m` ticks via BingX WebSocket.
-  - `BtcImpulseDetector` monitors price moves in real-time. Upon detecting an impulse $\ge \text{lead\_lag\_btc\_impulse\_pct}$ (and outside cooldown), triggers a fast scan of altcoins and enters the top lagging opportunity via `PositionManager` directly on the demo (VST) exchange.
+  - When `TRADING_LEAD_LAG_ENABLED=true`, monitors price moves and triggers altcoin scans. When disabled (`false`), returns immediately.
   - Fixed WebSocket Ping/Pong keep-alive to maintain 24/7 stable connection without timeouts.
 - **Strategy Statistics & Diagnostics Logging**:
   - `BounceStrategy::diagnose()` scores 12 individual criteria (4 hard + 8 soft).
@@ -164,3 +164,7 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *Automated Bot Trades*: **6/6 wins (100% Win Rate)**, Realized: +$37.90, Fees: -$18.82, Funding: -$0.23, **Net Bot Profit: +$18.85** (ADA: +$10.33, LINK: +$5.20, DOGE: +$3.55).
   - *Manual Close of Orphaned SOL-USDT*: -$149.81 net (opened Sept 01 15:32 before order cleanup fixes).
   - *Total Net (all included)*: -$130.96.
+- **2026-09-03 – 2026-09-04**:
+  - *Total Trades*: 12 trades, Realized PnL: -$69.90, Fees: -$41.39, **Net PnL: -$111.28**.
+  - *BounceStrategy*: 4 trades, **3/4 wins (75% Win Rate)**, Realized: +$7.92, Fees: -$13.87, Net: -$5.94 (LINK: +$3.75, ETH: +$13.80, ADA: +$15.34, BNB: -$38.83).
+  - *BtcLeadLagStrategy*: 8 trades, **0/8 wins net (0% Win Rate)**, Realized: -$77.82, Fees: -$27.52, Net: -$105.34 (failed due to simultaneous 6-long cascade at 00:30 MSK followed by sharp BTC reversal). Now completely disabled.

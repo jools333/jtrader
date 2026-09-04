@@ -27,6 +27,7 @@ final class BounceStrategy implements EntryStrategyInterface
         private readonly float $levelApproachAtr = 0.50,
         private readonly float $bounceReversalAtr = 0.10,
         private readonly float $minAtrPercent = 0.20,
+        private readonly float $stopBufferAtr = 0.25,
     ) {
     }
 
@@ -167,7 +168,8 @@ final class BounceStrategy implements EntryStrategyInterface
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
-        $plan = $isFull ? $planner->plan($ctx, SignalType::Bounce, Direction::Long) : null;
+        $technicalStop = min($minLow, $level) - ($atr * $this->stopBufferAtr);
+        $plan = $isFull ? $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: $technicalStop) : null;
 
         return new StrategyEvaluationResult(
             strategy: 'BounceStrategy',
@@ -308,7 +310,8 @@ final class BounceStrategy implements EntryStrategyInterface
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
-        $plan = $isFull ? $planner->plan($ctx, SignalType::Bounce, Direction::Short) : null;
+        $technicalStop = max($maxHigh, $level) + ($atr * $this->stopBufferAtr);
+        $plan = $isFull ? $planner->plan($ctx, SignalType::Bounce, Direction::Short, stopPrice: $technicalStop) : null;
 
         return new StrategyEvaluationResult(
             strategy: 'BounceStrategy',
