@@ -22,7 +22,7 @@ final class BounceStrategy implements EntryStrategyInterface
 {
     public function __construct(
         private readonly ?StrategyLoggerInterface $logger = null,
-        private readonly float $minEntryScore = 100.0,
+        private readonly float $minEntryScore = 83.33,
         private readonly int $lookbackCandles = 10,
         private readonly float $levelApproachAtr = 0.50,
         private readonly float $bounceReversalAtr = 0.10,
@@ -57,10 +57,10 @@ final class BounceStrategy implements EntryStrategyInterface
         $longEval = $this->diagnoseLong($ctx, $planner, $window, $last);
         $shortEval = $this->diagnoseShort($ctx, $planner, $window, $last);
 
-        if ($longEval->isFullSignal && !$shortEval->isFullSignal) {
+        if ($longEval->entrySignal !== null && $shortEval->entrySignal === null) {
             return $longEval;
         }
-        if ($shortEval->isFullSignal && !$longEval->isFullSignal) {
+        if ($shortEval->entrySignal !== null && $longEval->entrySignal === null) {
             return $shortEval;
         }
 
@@ -130,7 +130,28 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
-        // 4. Цена входа в допустимой зоне уровня (не перекуплена / не на пике)
+        // 4. Строгий фильтр тренда для LONG (EMA8 должна расти, цена выше EMA50)
+        $passedTrend = $ctx->ema8Rising() && $last->close > $ctx->ema50At($ctx->i);
+
+        $criteria['strict_trend'] = new CriterionResult(
+            key: 'strict_trend',
+            name: 'Тренд вверх (EMA8 растет, цена > EMA50)',
+            passed: $passedTrend,
+            expected: 'EMA8 растет, цена > EMA50',
+            actual: sprintf(
+                'EMA8 Rising: %s, Price %.4f vs EMA50 %.4f',
+                $ctx->ema8Rising() ? 'Yes' : 'No',
+                $last->close,
+                $ctx->ema50At($ctx->i)
+            ),
+            actualValue: $last->close,
+            thresholdValue: $ctx->ema50At($ctx->i),
+        );
+        if (! $passedTrend) {
+            $missing[] = 'Против тренда (EMA не подтверждает рост)';
+        }
+
+        // 5. Цена входа в допустимой зоне уровня (не перекуплена / не на пике)
         $passedEntryZone = $last->close <= $level + $atr * $this->levelApproachAtr && $last->close >= $level - $atr * $this->levelApproachAtr;
 
         $criteria['entry_zone'] = new CriterionResult(
@@ -146,7 +167,7 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня поддержки (вход на пике)';
         }
 
-        // 5. Подтверждение бычьей свечой (закрытие выше открытия или EMA8 растет)
+        // 6. Подтверждение бычьей свечой (закрытие выше открытия или EMA8 растет)
         $passedBullish = $last->close >= $last->open || $ctx->ema8Rising();
 
         $criteria['bullish_confirmation'] = new CriterionResult(
@@ -168,7 +189,8 @@ final class BounceStrategy implements EntryStrategyInterface
         $isFull = ($passed === $total);
 
         $technicalStop = min($minLow, $level) - ($atr * $this->stopBufferAtr);
-        $plan = $isFull ? $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: $technicalStop) : null;
+        $canEnter = $score >= $this->minEntryScore;
+        $plan = $canEnter ? $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: $technicalStop) : null;
 
         return new StrategyEvaluationResult(
             strategy: 'BounceStrategy',
@@ -312,7 +334,8 @@ final class BounceStrategy implements EntryStrategyInterface
         $isFull = ($passed === $total);
 
         $technicalStop = max($maxHigh, $level) + ($atr * $this->stopBufferAtr);
-        $plan = $isFull ? $planner->plan($ctx, SignalType::Bounce, Direction::Short, stopPrice: $technicalStop) : null;
+        $canEnter = $score >= $this->minEntryScore;
+        $plan = $canEnter ? $planner->plan($ctx, SignalType::Bounce, Direction::Short, stopPrice: $technicalStop) : null;
 
         return new StrategyEvaluationResult(
             strategy: 'BounceStrategy',
