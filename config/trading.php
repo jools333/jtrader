@@ -143,7 +143,7 @@ return [
     | Number of days to keep strategy evaluation records, specs, and chart images.
     */
     'cleanup' => [
-        'retention_days' => (int) env('TRADING_RETENTION_DAYS', 7),
+        'retention_days' => (int) env('TRADING_RETENTION_DAYS', 3),
     ],
 
 ];
