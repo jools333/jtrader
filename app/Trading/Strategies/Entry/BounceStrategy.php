@@ -7,6 +7,7 @@ namespace App\Trading\Strategies\Entry;
 use App\Market\DTO\Candle;
 use App\Trading\Agent\RuleContext;
 use App\Trading\Agent\TradePlanner;
+use App\Trading\Analysis\CandleSignals;
 use App\Trading\Contracts\EntryStrategyInterface;
 use App\Trading\Contracts\StrategyLoggerInterface;
 use App\Trading\DTO\CriterionResult;
@@ -22,13 +23,15 @@ final class BounceStrategy implements EntryStrategyInterface
 {
     public function __construct(
         private readonly ?StrategyLoggerInterface $logger = null,
-        private readonly float $minEntryScore = 83.33,
+        private readonly float $minEntryScore = 80.0,
         private readonly int $lookbackCandles = 10,
         private readonly float $levelApproachAtr = 0.50,
         private readonly float $bounceReversalAtr = 0.10,
         private readonly float $minAtrPercent = 0.20,
         private readonly float $stopBufferAtr = 0.25,
         private readonly float $entryZoneAtr = 0.65,
+        private readonly float $volumeMultiplier = 1.15,
+        private readonly float $climaxVolumeMultiplier = 2.20,
     ) {}
 
     public function evaluate(RuleContext $ctx, TradePlanner $planner): ?EntrySignal
@@ -184,12 +187,71 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Нет подтверждения разворота вверх (медвежья свеча)';
         }
 
+        // 7. Отсутствие кульминации пробоя / падающего ножа (Hard filter)
+        $cnt = count($window);
+        $priorSlice = array_slice($window, 0, $cnt - 1);
+        $priorAvgVol = CandleSignals::avgVolume($priorSlice, 20);
+
+        $hasClimax = false;
+        $climaxDetail = null;
+        if ($priorAvgVol > 0.0) {
+            foreach ($priorSlice as $c) {
+                $body = $c->open - $c->close;
+                $range = $c->high - $c->low;
+                $isLargeBearBody = $body >= $atr * 0.40;
+                $isClosingAtBottom = $range > 0 && ($c->close - $c->low) <= ($range * 0.25);
+                $isExtremeVolume = $c->volume >= $priorAvgVol * $this->climaxVolumeMultiplier;
+
+                if ($isLargeBearBody && $isClosingAtBottom && $isExtremeVolume) {
+                    $hasClimax = true;
+                    $climaxDetail = sprintf('Свеча с объемом %.1fx от среднего и закрытием в самом низу', $c->volume / $priorAvgVol);
+                    break;
+                }
+            }
+        }
+        $passedNoClimax = ! $hasClimax;
+
+        $criteria['no_climax'] = new CriterionResult(
+            key: 'no_climax',
+            name: 'Отсутствие кульминации пробоя (падающего ножа)',
+            passed: $passedNoClimax,
+            expected: sprintf('Нет свечей сброса с объемом >= %.1fx от среднего', $this->climaxVolumeMultiplier),
+            actual: $passedNoClimax ? 'Кульминации нет' : ($climaxDetail ?? 'Обнаружена кульминация пробоя'),
+            actualValue: $hasClimax ? 1.0 : 0.0,
+            thresholdValue: 0.0,
+        );
+        if (! $passedNoClimax) {
+            $missing[] = 'Уровень пробивается на аномальном объеме (падающий нож)';
+        }
+
+        // 8. Объемное подтверждение отскока (Soft)
+        $reqVolume = $priorAvgVol * $this->volumeMultiplier;
+        $passedVolumeSurge = ($priorAvgVol <= 0.0) || ($last->volume >= $reqVolume);
+
+        $actualVolStr = $priorAvgVol > 0.0
+            ? sprintf('%.1f (%.2fx от среднего %.1f)', $last->volume, $last->volume / $priorAvgVol, $priorAvgVol)
+            : sprintf('%.1f (объем отсутствует)', $last->volume);
+
+        $criteria['volume_surge'] = new CriterionResult(
+            key: 'volume_surge',
+            name: 'Объемное подтверждение отскока',
+            passed: $passedVolumeSurge,
+            expected: sprintf('>= %.2fx от среднего (>= %.1f)', $this->volumeMultiplier, $reqVolume),
+            actual: $actualVolStr,
+            actualValue: $last->volume,
+            thresholdValue: $reqVolume,
+        );
+        if (! $passedVolumeSurge) {
+            $missing[] = 'Слабый объем на отскоке (нет подтверждения покупателей)';
+        }
+
         // Hard filters: 100% strictly mandatory for entry
         $hardFilters = [
             'strict_trend' => $passedTrend,
             'level_approach' => $passedApproach,
             'normal_atr' => $passedNormalAtr,
             'entry_zone' => $passedEntryZone,
+            'no_climax' => $passedNoClimax,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
@@ -339,12 +401,71 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Нет подтверждения разворота вниз (бычья свеча)';
         }
 
+        // 7. Отсутствие кульминации пробоя / взлета в сопротивление (Hard filter)
+        $cnt = count($window);
+        $priorSlice = array_slice($window, 0, $cnt - 1);
+        $priorAvgVol = CandleSignals::avgVolume($priorSlice, 20);
+
+        $hasClimax = false;
+        $climaxDetail = null;
+        if ($priorAvgVol > 0.0) {
+            foreach ($priorSlice as $c) {
+                $body = $c->close - $c->open;
+                $range = $c->high - $c->low;
+                $isLargeBullBody = $body >= $atr * 0.40;
+                $isClosingAtTop = $range > 0 && ($c->high - $c->close) <= ($range * 0.25);
+                $isExtremeVolume = $c->volume >= $priorAvgVol * $this->climaxVolumeMultiplier;
+
+                if ($isLargeBullBody && $isClosingAtTop && $isExtremeVolume) {
+                    $hasClimax = true;
+                    $climaxDetail = sprintf('Свеча с объемом %.1fx от среднего и закрытием в самом верху', $c->volume / $priorAvgVol);
+                    break;
+                }
+            }
+        }
+        $passedNoClimax = ! $hasClimax;
+
+        $criteria['no_climax'] = new CriterionResult(
+            key: 'no_climax',
+            name: 'Отсутствие кульминации пробоя (взлета в сопротивление)',
+            passed: $passedNoClimax,
+            expected: sprintf('Нет свечей пампа с объемом >= %.1fx от среднего', $this->climaxVolumeMultiplier),
+            actual: $passedNoClimax ? 'Кульминации нет' : ($climaxDetail ?? 'Обнаружена кульминация пробоя'),
+            actualValue: $hasClimax ? 1.0 : 0.0,
+            thresholdValue: 0.0,
+        );
+        if (! $passedNoClimax) {
+            $missing[] = 'Уровень пробивается на аномальном объеме вверх (импульсный пробой)';
+        }
+
+        // 8. Объемное подтверждение отскока (Soft)
+        $reqVolume = $priorAvgVol * $this->volumeMultiplier;
+        $passedVolumeSurge = ($priorAvgVol <= 0.0) || ($last->volume >= $reqVolume);
+
+        $actualVolStr = $priorAvgVol > 0.0
+            ? sprintf('%.1f (%.2fx от среднего %.1f)', $last->volume, $last->volume / $priorAvgVol, $priorAvgVol)
+            : sprintf('%.1f (объем отсутствует)', $last->volume);
+
+        $criteria['volume_surge'] = new CriterionResult(
+            key: 'volume_surge',
+            name: 'Объемное подтверждение отскока',
+            passed: $passedVolumeSurge,
+            expected: sprintf('>= %.2fx от среднего (>= %.1f)', $this->volumeMultiplier, $reqVolume),
+            actual: $actualVolStr,
+            actualValue: $last->volume,
+            thresholdValue: $reqVolume,
+        );
+        if (! $passedVolumeSurge) {
+            $missing[] = 'Слабый объем на отскоке (нет подтверждения продавцов)';
+        }
+
         // Hard filters: 100% strictly mandatory for entry
         $hardFilters = [
             'strict_trend' => $passedTrend,
             'level_approach' => $passedApproach,
             'normal_atr' => $passedNormalAtr,
             'entry_zone' => $passedEntryZone,
+            'no_climax' => $passedNoClimax,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 

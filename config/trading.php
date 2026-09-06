@@ -64,7 +64,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'agent' => [
-        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 83.33),
+        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 80.0),
         'min_rr' => 2.0,          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
@@ -87,6 +87,8 @@ return [
         'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
+        'bounce_volume_multiplier' => (float) env('TRADING_BOUNCE_VOLUME_MULT', 1.15), // Мин. всплеск объема на триггерной свече отскока
+        'bounce_climax_volume_mult' => (float) env('TRADING_BOUNCE_CLIMAX_MULT', 2.20), // Порог кульминации пробоя (падающий нож)
         
         // Настройки тейк-профита, комиссий и защитного стопа
         'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker) или TAKE_PROFIT (Maker)

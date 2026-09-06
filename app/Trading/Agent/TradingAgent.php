@@ -81,13 +81,15 @@ final class TradingAgent implements TradingAgentInterface
         $defaultStrategies = [
             new BounceStrategy(
                 logger: $logger,
-                minEntryScore: (float) ($this->config['min_entry_score'] ?? 83.33),
+                minEntryScore: (float) ($this->config['min_entry_score'] ?? 80.0),
                 lookbackCandles: (int) ($this->config['bounce_lookback_candles'] ?? 10),
                 levelApproachAtr: (float) ($this->config['bounce_level_approach_atr'] ?? 0.50),
                 bounceReversalAtr: (float) ($this->config['bounce_reversal_atr'] ?? 0.10),
                 minAtrPercent: (float) ($this->config['bounce_min_atr_percent'] ?? 0.20),
                 stopBufferAtr: (float) ($this->config['bounce_stop_atr_buffer'] ?? 0.25),
                 entryZoneAtr: (float) ($this->config['bounce_entry_zone_atr'] ?? 0.65),
+                volumeMultiplier: (float) ($this->config['bounce_volume_multiplier'] ?? 1.15),
+                climaxVolumeMultiplier: (float) ($this->config['bounce_climax_volume_mult'] ?? 2.20),
             ),
         ];
 

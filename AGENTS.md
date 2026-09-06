@@ -99,22 +99,18 @@ and Filament pagination — it is compiled in the Dockerfile via `docker-php-ext
 
 Trading logic is located in `app/Trading/`:
 - **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window.
-- **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector (~20-25 candles lookback) with dual-layer Hard/Soft criteria:
+- **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector with dual-layer Hard/Soft criteria:
   - **Hard Filters (100% strictly mandatory for entry)**:
-    1. *Trend Alignment (EMA 50)*: entry direction must align with global trend — price beyond EMA 50 + $0.10 \times \text{ATR}$ buffer AND EMA 50 slope confirms direction (rising for LONG, falling for SHORT over last 3 bars).
-    2. *MACD Alignment*: MACD histogram in trade direction ($> 0$ for LONG, $< 0$ for SHORT).
-    3. *Entry Zone*: entry close within $0.50 \times \text{ATR}$ of key level.
-    4. *Risk / Reward*: calculated setup $R:R \ge 2.0$ ($T1=2R, T2=4R$).
-  - **Soft Price Action Criteria (8 scored conditions)**:
-    1. *Breakout / Impulse Peak*: move beyond level ($\ge 0.35 \times \text{ATR}$).
-    2. *Pullback to level*: returns into level zone ($\le 0.25 \times \text{ATR}$).
-    3. *Level Held*: penetration $< 0.40 \times \text{ATR}$.
-    4. *Compression*: volume/range deceleration near level ($\ge 1$ bars).
-    5. *Impulse Bounce*: trigger candle body $\ge 0.35 \times \text{ATR}$.
-    6. *Volume Confirmation*: trigger volume $> 1.1 \times$ pullback avg volume.
-    7. *Momentum Exhaustion*: no aggressive pullback candles ($> 0.70 \times \text{ATR}$).
-    8. *Wick Rejection / Pin Bar*: level touch/pierce within $0.15 \times \text{ATR}$ and rejection wick.
-  - *Entry Rule*: All 4 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 83.33% = 10/12 criteria).
+    1. *Trend Alignment (`strict_trend`)*: EMA8 slope confirms direction (rising for LONG, falling for SHORT) AND price beyond EMA50.
+    2. *Level Approach (`level_approach`)*: local extreme within $[L - 0.50 \times \text{ATR}, L + 0.50 \times \text{ATR}]$.
+    3. *Normal Volatility (`normal_atr`)*: ATR $> 0.20\%$ of current price.
+    4. *Entry Zone (`entry_zone`)*: entry close within $0.65 \times \text{ATR}$ of key level.
+    5. *Anti-Climax Breakdown Protection (`no_climax`)*: no breakdown climax candle ($V \ge 2.2 \times V_{\text{avg}}$ with body $\ge 0.40 \times \text{ATR}$ closing at the extreme) in the approach.
+  - **Soft Price Action & Volume Criteria (3 scored conditions)**:
+    1. *ATR Bounce (`atr_bounce`)*: bounce $\ge 0.10 \times \text{ATR}$ from local extreme.
+    2. *Confirmation Candle (`bullish_confirmation` / `bearish_confirmation`)*: trigger candle matches direction or EMA8 confirms.
+    3. *Volume Surge (`volume_surge`)*: trigger candle volume $\ge 1.15 \times V_{\text{avg}}$.
+  - *Entry Rule*: All 5 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 80.0% = at least 7/8 criteria).
 - **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
   - `BTC-USDT` is excluded from opening positions (`config('trading.excluded_symbols')`), but streams via WebSocket for market regime analysis.
   - Altcoin LONG entries are blocked if BTC drops $> 0.20\%$ over 3 bars or if `BTC EMA8 < EMA21` and BTC price $< \text{EMA50}$.
