@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Trading\Execution;
 
 use App\Jobs\RenderPositionChartJob;
+use App\Market\DTO\Candle;
 use App\Models\Position;
 use App\Trading\Charting\ChartRenderer;
 use App\Trading\Contracts\TradeExecutorInterface;
@@ -34,14 +35,13 @@ final class PositionManager
         private readonly TradeExecutorInterface $executor,
         private readonly array $config = [],
         private readonly ?ChartRenderer $chart = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Evaluate and act for one bar. Returns the agent result so callers can log
      * or display it.
      *
-     * @param array<int, \App\Market\DTO\Candle> $candles oldest -> newest
+     * @param  array<int, Candle>  $candles  oldest -> newest
      */
     public function process(
         string $symbol,
@@ -77,7 +77,7 @@ final class PositionManager
      * Best-effort: render the position chart and store its path. Never lets a
      * charting failure interrupt trade management.
      *
-     * @param array<int, \App\Market\DTO\Candle> $candles
+     * @param  array<int, Candle>  $candles
      */
     private function attachChart(Position $position, array $candles): void
     {
@@ -124,7 +124,7 @@ final class PositionManager
         ?float $level = null,
         ?int $entryOpenTime = null,
     ): Position {
-        $quantity = $this->sizePosition($signal);
+        $quantity = $this->sizePosition($signal, $symbol);
         $order = $this->executor->openPosition($signal, $symbol, $quantity);
 
         return Position::create([
@@ -202,10 +202,13 @@ final class PositionManager
      * Falls back to min_quantity when the calculation is degenerate (zero stop
      * distance, zero balance, or risk_percent disabled).
      */
-    private function sizePosition(EntrySignal $signal): float
+    private function sizePosition(EntrySignal $signal, ?string $symbol = null): float
     {
-        $riskPct = (float) ($this->config['risk_percent'] ?? 1.0);
-        $maxQty  = (float) ($this->config['max_quantity'] ?? 0.0);
+        $symbolRisk = ($symbol !== null && isset($this->config['symbol_risk_pct'][$symbol]))
+            ? (float) $this->config['symbol_risk_pct'][$symbol]
+            : null;
+        $riskPct = $symbolRisk ?? (float) ($this->config['risk_percent'] ?? 1.0);
+        $maxQty = (float) ($this->config['max_quantity'] ?? 0.0);
 
         $riskPerUnit = abs($signal->entryPrice - $signal->stop);
 
@@ -252,6 +255,7 @@ final class PositionManager
             size: $position->size,
             // A reduced size means T1 already banked profit and the stop is at break-even.
             breakevenSet: $position->size < 1.0,
+            openedAt: $position->opened_at,
         );
     }
 
@@ -297,7 +301,7 @@ final class PositionManager
             ->all();
     }
 
-    /** @param array<int, \App\Market\DTO\Candle> $candles */
+    /** @param array<int, Candle> $candles */
     private function currentPrice(array $candles): float
     {
         $last = end($candles);
@@ -305,7 +309,7 @@ final class PositionManager
         return $last ? $last->close : 0.0;
     }
 
-    /** @param array<int, \App\Market\DTO\Candle> $candles */
+    /** @param array<int, Candle> $candles */
     private function currentOpenTime(array $candles): ?int
     {
         $last = end($candles);

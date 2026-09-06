@@ -20,21 +20,29 @@ use App\Trading\Enums\Direction;
 use App\Trading\Enums\ExitReason;
 // Импорт типа выхода
 use App\Trading\Enums\ExitType;
+use Illuminate\Support\Carbon;
 
 /**
  * Стратегия выхода №3 (Приоритет 4) — Досрочный выход при формировании разворотного паттерна против позиции.
  */
 final class EarlyReversalStrategy implements ExitStrategyInterface
 {
-    public function __construct(private readonly array $config = [])
-    {
-    }
+    public function __construct(private readonly array $config = []) {}
 
     /**
      * Оценка разворотных паттернов против открытой позиции.
      */
     public function evaluate(RuleContext $ctx, PositionState $position): ?ExitSignal
     {
+        // Защита от раннего закрытия по рынку: даем сделке время на развитие (по умолчанию 180 сек)
+        $minHoldSeconds = (int) ($this->config['min_hold_seconds'] ?? 180);
+        if ($position->openedAt !== null && $minHoldSeconds > 0) {
+            $secondsOpen = abs(Carbon::now()->diffInSeconds($position->openedAt));
+            if ($secondsOpen < $minHoldSeconds) {
+                return null;
+            }
+        }
+
         // Флаг лонговой позиции
         $isLong = $position->direction === Direction::Long;
 

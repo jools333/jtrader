@@ -27,4 +27,6 @@ Schedule::command('positions:sync')
     ->everyMinute()
     ->withoutOverlapping(2);
 
-
+Schedule::command('report:daily-telegram --sync')
+    ->dailyAt('23:55')
+    ->withoutOverlapping(10);

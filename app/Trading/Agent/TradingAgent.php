@@ -13,34 +13,32 @@ use App\Trading\Contracts\EntryStrategyInterface;
 // Импорт интерфейса стратегии выхода
 use App\Trading\Contracts\ExitStrategyInterface;
 // Импорт основного интерфейса торгового агента
-use App\Trading\Contracts\TradingAgentInterface;
+use App\Trading\Contracts\StrategyLoggerInterface;
 // Импорт DTO общего результата работы агента
-use App\Trading\DTO\AgentResult;
+use App\Trading\Contracts\TradingAgentInterface;
 // Импорт DTO сигнала на вход
-use App\Trading\DTO\EntrySignal;
+use App\Trading\DTO\AgentResult;
 // Импорт DTO сигнала на выход
-use App\Trading\DTO\ExitSignal;
+use App\Trading\DTO\EntrySignal;
 // Импорт DTO снимка индикаторов
-use App\Trading\DTO\IndicatorSnapshot;
+use App\Trading\DTO\ExitSignal;
 // Импорт DTO состояния открытой позиции
-use App\Trading\DTO\PositionState;
+use App\Trading\DTO\IndicatorSnapshot;
 // Импорт стратегии отскока
-use App\Trading\Strategies\Entry\BounceStrategy;
+use App\Trading\DTO\PositionState;
 // Импорт стратегии BTC Lead-Lag
-use App\Trading\Strategies\Entry\BtcLeadLagStrategy;
+use App\Trading\Strategies\Entry\BounceStrategy;
 // Импорт стратегии ложного пробоя
-use App\Trading\Strategies\Entry\FalseBreakoutStrategy;
 // Импорт стратегии пробоя и ретеста
-use App\Trading\Strategies\Entry\RetestStrategy;
 // Импорт стратегии отката по тренду
-use App\Trading\Strategies\Entry\TrendPullbackStrategy;
 // Импорт стратегии раннего разворота
-use App\Trading\Strategies\Exit\EarlyReversalStrategy;
+use App\Trading\Strategies\Entry\BtcLeadLagStrategy;
 // Импорт стратегии стоп-лосса
-use App\Trading\Strategies\Exit\StopLossStrategy;
+use App\Trading\Strategies\Exit\EarlyReversalStrategy;
 // Импорт стратегии фиксации цели 1
-use App\Trading\Strategies\Exit\Target1Strategy;
+use App\Trading\Strategies\Exit\StopLossStrategy;
 // Импорт стратегии фиксации цели 2
+use App\Trading\Strategies\Exit\Target1Strategy;
 use App\Trading\Strategies\Exit\Target2Strategy;
 
 /**
@@ -50,6 +48,7 @@ final class TradingAgent implements TradingAgentInterface
 {
     // Сервис расчета параметров ордера (стоп, тейки)
     private readonly TradePlanner $planner;
+
     // Сервис глобальных фильтров рынка
     private readonly EntryGuard $guard;
 
@@ -60,9 +59,9 @@ final class TradingAgent implements TradingAgentInterface
     private readonly array $exitStrategies;
 
     /**
-     * @param array<string, mixed> $config
-     * @param list<EntryStrategyInterface>|null $entryStrategies
-     * @param list<ExitStrategyInterface>|null $exitStrategies
+     * @param  array<string, mixed>  $config
+     * @param  list<EntryStrategyInterface>|null  $entryStrategies
+     * @param  list<ExitStrategyInterface>|null  $exitStrategies
      */
     public function __construct(
         private readonly array $config = [],
@@ -70,7 +69,7 @@ final class TradingAgent implements TradingAgentInterface
         ?EntryGuard $guard = null,
         ?array $entryStrategies = null,
         ?array $exitStrategies = null,
-        ?\App\Trading\Contracts\StrategyLoggerInterface $logger = null,
+        ?StrategyLoggerInterface $logger = null,
     ) {
         // Инициализация планировщика сделок
         $this->planner = $planner ?? new TradePlanner($this->config);
@@ -88,6 +87,7 @@ final class TradingAgent implements TradingAgentInterface
                 bounceReversalAtr: (float) ($this->config['bounce_reversal_atr'] ?? 0.10),
                 minAtrPercent: (float) ($this->config['bounce_min_atr_percent'] ?? 0.20),
                 stopBufferAtr: (float) ($this->config['bounce_stop_atr_buffer'] ?? 0.25),
+                entryZoneAtr: (float) ($this->config['bounce_entry_zone_atr'] ?? 0.65),
             ),
         ];
 
@@ -104,9 +104,9 @@ final class TradingAgent implements TradingAgentInterface
 
         // Регистрация набора стратегий выхода в порядке строгого приоритета
         $this->exitStrategies = $exitStrategies ?? [
-            new StopLossStrategy(),
-            new Target2Strategy(),
-            new Target1Strategy(),
+            new StopLossStrategy,
+            new Target2Strategy,
+            new Target1Strategy,
             new EarlyReversalStrategy($this->config),
         ];
     }
@@ -186,10 +186,10 @@ final class TradingAgent implements TradingAgentInterface
     /**
      * Формирование снимка индикаторов на последнем баре.
      *
-     * @param array<int, Candle> $candles
-     * @param array<int, float> $ema8
-     * @param array<int, float> $ema21
-     * @param array{line: array<int, float>, signal: array<int, float>, histogram: array<int, float>} $macd
+     * @param  array<int, Candle>  $candles
+     * @param  array<int, float>  $ema8
+     * @param  array<int, float>  $ema21
+     * @param  array{line: array<int, float>, signal: array<int, float>, histogram: array<int, float>}  $macd
      */
     private function createIndicatorSnapshot(
         array $candles,
@@ -217,7 +217,7 @@ final class TradingAgent implements TradingAgentInterface
     /**
      * Последовательная проверка всех стратегий входа.
      *
-     * @param list<string> $recentSignalTypes
+     * @param  list<string>  $recentSignalTypes
      */
     private function evaluateEntry(RuleContext $ctx, array $recentSignalTypes): ?EntrySignal
     {

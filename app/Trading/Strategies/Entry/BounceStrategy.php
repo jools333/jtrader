@@ -7,8 +7,8 @@ namespace App\Trading\Strategies\Entry;
 use App\Market\DTO\Candle;
 use App\Trading\Agent\RuleContext;
 use App\Trading\Agent\TradePlanner;
-use App\Trading\Contracts\StrategyLoggerInterface;
 use App\Trading\Contracts\EntryStrategyInterface;
+use App\Trading\Contracts\StrategyLoggerInterface;
 use App\Trading\DTO\CriterionResult;
 use App\Trading\DTO\EntrySignal;
 use App\Trading\DTO\StrategyEvaluationResult;
@@ -28,6 +28,7 @@ final class BounceStrategy implements EntryStrategyInterface
         private readonly float $bounceReversalAtr = 0.10,
         private readonly float $minAtrPercent = 0.20,
         private readonly float $stopBufferAtr = 0.25,
+        private readonly float $entryZoneAtr = 0.65,
     ) {}
 
     public function evaluate(RuleContext $ctx, TradePlanner $planner): ?EntrySignal
@@ -79,7 +80,7 @@ final class BounceStrategy implements EntryStrategyInterface
         $missing = [];
 
         // 1. Подход к уровню поддержки
-        $minLow = min(array_map(static fn(Candle $c) => $c->low, $window));
+        $minLow = min(array_map(static fn (Candle $c) => $c->low, $window));
         // Зона поддержки: от L - 0.5 ATR до L + 0.5 ATR
         $passedApproach = $minLow <= $level + $atr * $this->levelApproachAtr && $minLow >= $level - $atr * $this->levelApproachAtr;
 
@@ -152,13 +153,13 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 5. Цена входа в допустимой зоне уровня (не перекуплена / не на пике)
-        $passedEntryZone = $last->close <= $level + $atr * $this->levelApproachAtr && $last->close >= $level - $atr * $this->levelApproachAtr;
+        $passedEntryZone = $last->close <= $level + $atr * $this->entryZoneAtr && $last->close >= $level - $atr * $this->entryZoneAtr;
 
         $criteria['entry_zone'] = new CriterionResult(
             key: 'entry_zone',
             name: 'Цена в зоне входа от уровня',
             passed: $passedEntryZone,
-            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->levelApproachAtr, $level + $atr * $this->levelApproachAtr),
+            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->entryZoneAtr, $level + $atr * $this->entryZoneAtr),
             actual: sprintf('Close = %.4f', $last->close),
             actualValue: $last->close,
             thresholdValue: $level,
@@ -183,13 +184,23 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Нет подтверждения разворота вверх (медвежья свеча)';
         }
 
+        // Hard filters: 100% strictly mandatory for entry
+        $hardFilters = [
+            'strict_trend' => $passedTrend,
+            'level_approach' => $passedApproach,
+            'normal_atr' => $passedNormalAtr,
+            'entry_zone' => $passedEntryZone,
+        ];
+        $allHardPassed = ! in_array(false, $hardFilters, true);
+
         $total = count($criteria);
-        $passed = count(array_filter($criteria, static fn(CriterionResult $c) => $c->passed));
+        $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
         $technicalStop = min($minLow, $level) - ($atr * $this->stopBufferAtr);
-        $canEnter = $score >= $this->minEntryScore;
+        // Entry requires ALL Hard filters to pass AND total score >= minEntryScore
+        $canEnter = $allHardPassed && ($score >= $this->minEntryScore);
         $plan = $canEnter ? $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: $technicalStop) : null;
 
         return new StrategyEvaluationResult(
@@ -224,7 +235,7 @@ final class BounceStrategy implements EntryStrategyInterface
         $missing = [];
 
         // 1. Подход к уровню сопротивления
-        $maxHigh = max(array_map(static fn(Candle $c) => $c->high, $window));
+        $maxHigh = max(array_map(static fn (Candle $c) => $c->high, $window));
         // Зона сопротивления: от L - 0.5 ATR до L + 0.5 ATR
         $passedApproach = $maxHigh >= $level - $atr * $this->levelApproachAtr && $maxHigh <= $level + $atr * $this->levelApproachAtr;
 
@@ -297,13 +308,13 @@ final class BounceStrategy implements EntryStrategyInterface
         }
 
         // 5. Цена входа в допустимой зоне уровня (не перепродана / не на дне)
-        $passedEntryZone = $last->close >= $level - $atr * $this->levelApproachAtr && $last->close <= $level + $atr * $this->levelApproachAtr;
+        $passedEntryZone = $last->close >= $level - $atr * $this->entryZoneAtr && $last->close <= $level + $atr * $this->entryZoneAtr;
 
         $criteria['entry_zone'] = new CriterionResult(
             key: 'entry_zone',
             name: 'Цена в зоне входа от уровня',
             passed: $passedEntryZone,
-            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->levelApproachAtr, $level + $atr * $this->levelApproachAtr),
+            expected: sprintf('В зоне [%.4f, %.4f]', $level - $atr * $this->entryZoneAtr, $level + $atr * $this->entryZoneAtr),
             actual: sprintf('Close = %.4f', $last->close),
             actualValue: $last->close,
             thresholdValue: $level,
@@ -328,13 +339,23 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Нет подтверждения разворота вниз (бычья свеча)';
         }
 
+        // Hard filters: 100% strictly mandatory for entry
+        $hardFilters = [
+            'strict_trend' => $passedTrend,
+            'level_approach' => $passedApproach,
+            'normal_atr' => $passedNormalAtr,
+            'entry_zone' => $passedEntryZone,
+        ];
+        $allHardPassed = ! in_array(false, $hardFilters, true);
+
         $total = count($criteria);
-        $passed = count(array_filter($criteria, static fn(CriterionResult $c) => $c->passed));
+        $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
         $technicalStop = max($maxHigh, $level) + ($atr * $this->stopBufferAtr);
-        $canEnter = $score >= $this->minEntryScore;
+        // Entry requires ALL Hard filters to pass AND total score >= minEntryScore
+        $canEnter = $allHardPassed && ($score >= $this->minEntryScore);
         $plan = $canEnter ? $planner->plan($ctx, SignalType::Bounce, Direction::Short, stopPrice: $technicalStop) : null;
 
         return new StrategyEvaluationResult(

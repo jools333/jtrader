@@ -29,8 +29,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
     public function __construct(
         private readonly HttpFactory $http,
         private readonly array $config,
-    ) {
-    }
+    ) {}
 
     public function name(): string
     {
@@ -60,6 +59,8 @@ final class BingXTradeExecutor implements TradeExecutorInterface
 
         $side = $signal->direction === Direction::Long ? 'BUY' : 'SELL';
         $positionSide = $signal->direction === Direction::Long ? 'LONG' : 'SHORT';
+        $tpType = (string) ($this->config['tp_order_type'] ?? config('trading.agent.tp_order_type', 'TAKE_PROFIT_MARKET'));
+        $tpPrice = $tpType === 'TAKE_PROFIT' ? $signal->target1 : null;
 
         return $this->send('/openApi/swap/v2/trade/order', [
             'symbol' => $symbol,
@@ -70,7 +71,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             'quantity' => $quantity,
             // Server-side protective orders so the position is covered even if
             // the agent process dies between bars.
-            'takeProfit' => $this->bracket('TAKE_PROFIT_MARKET', $signal->target1),
+            'takeProfit' => $this->bracket($tpType, $signal->target1, $tpPrice),
             'stopLoss' => $this->bracket('STOP_MARKET', $signal->stop),
         ]);
     }
@@ -160,9 +161,14 @@ final class BingXTradeExecutor implements TradeExecutorInterface
     }
 
     /** @return string JSON for a BingX bracket (TP/SL) sub-order. */
-    private function bracket(string $type, float $stopPrice): string
+    private function bracket(string $type, float $stopPrice, ?float $price = null): string
     {
-        return json_encode(['type' => $type, 'stopPrice' => $stopPrice], JSON_THROW_ON_ERROR);
+        $payload = ['type' => $type, 'stopPrice' => $stopPrice];
+        if ($price !== null && $type === 'TAKE_PROFIT') {
+            $payload['price'] = $price;
+        }
+
+        return json_encode($payload, JSON_THROW_ON_ERROR);
     }
 
     /** Current held quantity for a given positionSide; 0.0 if not found or error. */
@@ -261,7 +267,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
-                ->delete('/openApi/swap/v2/trade/order?signature=' . $signature, $params);
+                ->delete('/openApi/swap/v2/trade/order?signature='.$signature, $params);
         } catch (Throwable) {
             // best-effort
         }
@@ -286,7 +292,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
-                ->delete('/openApi/swap/v2/trade/allOpenOrders?signature=' . $signature, $params);
+                ->delete('/openApi/swap/v2/trade/allOpenOrders?signature='.$signature, $params);
         } catch (Throwable) {
             // best-effort
         }
@@ -295,7 +301,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
     /**
      * Sign and POST a request to BingX; normalise the response to an OrderResult.
      *
-     * @param array<string, mixed> $params
+     * @param  array<string, mixed>  $params
      */
     private function send(string $path, array $params): OrderResult
     {

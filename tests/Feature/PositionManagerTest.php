@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Position;
 use App\Market\DTO\Candle;
+use App\Models\Position;
 use App\Trading\Agent\TradingAgent;
 use App\Trading\Execution\PaperTradeExecutor;
 use App\Trading\Execution\PositionManager;
@@ -94,6 +94,32 @@ class PositionManagerTest extends TestCase
         $signal = $result->entrySignal;
         $riskPerUnit = abs($signal->entryPrice - $signal->stop);
         $expected = round((1_000.0 * 1.0 / 100.0) / $riskPerUnit, 4);
+
+        $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
+    }
+
+    public function test_quantity_uses_symbol_risk_pct_override(): void
+    {
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'risk_percent' => 1.0,
+                'symbol_risk_pct' => ['ADA-USDT' => 0.75],
+                'paper_balance' => 1_000.0,
+                'max_position_pct' => 0.0,
+            ]),
+        );
+
+        $result = $manager->process('ADA-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+
+        $this->assertNotNull($result->entrySignal);
+        $position = Position::where('symbol', 'ADA-USDT')->first();
+        $this->assertNotNull($position);
+
+        $signal = $result->entrySignal;
+        $riskPerUnit = abs($signal->entryPrice - $signal->stop);
+        $expected = round((1_000.0 * 0.75 / 100.0) / $riskPerUnit, 4);
 
         $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
     }

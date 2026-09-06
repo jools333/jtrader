@@ -25,7 +25,11 @@ return [
     | max_quantity — hard cap after the calculation (0 = no cap).
     |   Per-symbol minimum lot size is enforced by the exchange, not here.
     */
-    'risk_percent'     => (float) env('TRADING_RISK_PCT', 2.0),
+    'risk_percent'     => (float) env('TRADING_RISK_PCT', 1.0),
+    'symbol_risk_pct'  => [
+        'ADA-USDT'  => (float) env('TRADING_RISK_PCT_ADA', 0.75),
+        'DOGE-USDT' => (float) env('TRADING_RISK_PCT_DOGE', 0.75),
+    ],
     'paper_balance'    => (float) env('TRADING_PAPER_BALANCE', 1_000.0),
     'max_quantity'     => (float) env('TRADING_MAX_QTY', 0.0),
     // Hard cap: notional position value ≤ X% of balance (0 = disabled).
@@ -74,15 +78,18 @@ return [
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.20), // макс допустимый памп BTC за 3 свечи для входа в SHORT
         'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.35), // импульсный дамп BTC для опережающего выхода из LONG
         'btc_fast_exit_pump_percent' => (float) env('TRADING_BTC_FAST_EXIT_PUMP_PCT', 0.35), // импульсный памп BTC для опережающего выхода из SHORT
-        
+        'min_hold_seconds' => (int) env('TRADING_MIN_HOLD_SECONDS', 180), // минимальное время удержания позиции (сек) перед досрочным выходом по рынку
+
         // Настройки BounceStrategy
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
-        'bounce_level_approach_atr' => 0.50, // Допустимая зона от уровня (в ATR)
+        'bounce_level_approach_atr' => 0.50, // Допустимая зона от уровня для теста (в ATR)
+        'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.65), // Допустимая зона для точки входа с учетом отскока (в ATR)
         'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
         
         // Настройки тейк-профита, комиссий и защитного стопа
+        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker) или TAKE_PROFIT (Maker)
         'tp_percent' => (float) env('TRADING_TP_PCT', 0.35),             // Чистый профит Target 1 (50% объема) в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка

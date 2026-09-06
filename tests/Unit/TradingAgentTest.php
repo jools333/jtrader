@@ -8,8 +8,10 @@ use App\Market\DTO\Candle;
 use App\Trading\Agent\TradingAgent;
 use App\Trading\DTO\PositionState;
 use App\Trading\Enums\Direction;
+use App\Trading\Enums\ExitReason;
 use App\Trading\Enums\ExitType;
 use App\Trading\Enums\SignalType;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\TestCase;
 
 class TradingAgentTest extends TestCase
@@ -245,6 +247,42 @@ class TradingAgentTest extends TestCase
         $this->assertNotNull($exit->reason);
     }
 
+    public function test_early_reversal_suppressed_when_position_opened_recently(): void
+    {
+        $atr = 8.0;
+        $candles = $this->baseline(45, 90, 100);
+        $candles[] = $this->candle(99.8, 100.6, 99.0, 99.2);
+        $candles[] = $this->candle(99.2, 99.8, 98.4, 98.6);
+        $candles[] = $this->candle(98.6, 98.8, 91.5, 92.0);
+
+        // Position opened 30 seconds ago (< min_hold_seconds of 180s)
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 80.0,
+            stopPrice: 70.0,
+            target1: 200.0,
+            target2: 300.0,
+            openedAt: Carbon::now()->subSeconds(30),
+        );
+
+        $exit = $this->agent()->evaluate($candles, 95.0, $atr, $position)->exitSignal;
+        $this->assertNull($exit);
+
+        // Position opened 200 seconds ago (>= min_hold_seconds of 180s)
+        $positionOlder = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 80.0,
+            stopPrice: 70.0,
+            target1: 200.0,
+            target2: 300.0,
+            openedAt: Carbon::now()->subSeconds(200),
+        );
+
+        $exitOlder = $this->agent()->evaluate($candles, 95.0, $atr, $positionOlder)->exitSignal;
+        $this->assertNotNull($exitOlder);
+        $this->assertSame(ExitType::EarlyReversal, $exitOlder->type);
+    }
+
     public function test_btc_dump_blocks_altcoin_long_entry(): void
     {
         $atr = 10.0;
@@ -301,7 +339,7 @@ class TradingAgentTest extends TestCase
 
         $this->assertNotNull($exit);
         $this->assertSame(ExitType::EarlyReversal, $exit->type);
-        $this->assertSame(\App\Trading\Enums\ExitReason::BtcReversal, $exit->reason);
+        $this->assertSame(ExitReason::BtcReversal, $exit->reason);
         $this->assertSame(100, $exit->closePercent);
     }
 }
