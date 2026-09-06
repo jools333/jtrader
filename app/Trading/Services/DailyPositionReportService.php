@@ -99,6 +99,9 @@ class DailyPositionReportService
             ->orderBy('opened_at', 'asc')
             ->get();
 
+        $closed = $this->deduplicatePositions($closed);
+        $open = $this->deduplicatePositions($open);
+
         $stats = $this->calculateStats($closed);
 
         return [
@@ -108,6 +111,40 @@ class DailyPositionReportService
             'open_positions' => $open,
             'stats' => $stats,
         ];
+    }
+
+    /**
+     * Deduplicate positions sharing the same exchange external_id.
+     * Prefers local bot-generated positions (with non-zero entry price and signal context)
+     * over raw external fallback imports.
+     *
+     * @param  Collection<int, Position>  $positions
+     * @return Collection<int, Position>
+     */
+    public function deduplicatePositions(Collection $positions): Collection
+    {
+        $grouped = $positions->groupBy(fn (Position $p) => $p->external_id ? 'ext_'.$p->external_id : 'id_'.$p->id);
+
+        return $grouped->map(function (Collection $group) {
+            if ($group->count() === 1) {
+                return $group->first();
+            }
+
+            return $group->sortByDesc(function (Position $p) {
+                $score = 0;
+                if ($p->signal_type !== 'EXTERNAL') {
+                    $score += 20;
+                }
+                if ($p->entry_price > 0.0) {
+                    $score += 10;
+                }
+                if (! empty($p->entry_context)) {
+                    $score += 5;
+                }
+
+                return $score;
+            })->first();
+        })->sortBy('closed_at')->values();
     }
 
     /**

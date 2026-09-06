@@ -171,4 +171,66 @@ class DailyPositionReportTest extends TestCase
             '--date' => '2026-09-04',
         ])->assertFailed();
     }
+
+    public function test_deduplicates_positions_sharing_same_external_id(): void
+    {
+        $extId = '2096453623425798146';
+
+        // 1. Bot position with full context and entry price
+        Position::create([
+            'symbol' => 'ADA-USDT',
+            'interval' => '5m',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_CLOSED,
+            'entry_price' => 0.2199,
+            'stop_price' => 0.2220,
+            'target1' => 0.2150,
+            'target2' => 0.2100,
+            'quantity' => 100.0,
+            'size' => 1.0,
+            'exit_price' => 0.2183,
+            'realized_pnl' => 40.0,
+            'commission' => 4.0,
+            'funding_fee' => 0.0,
+            'external_id' => $extId,
+            'entry_context' => ['signal' => ['type' => 'BOUNCE']],
+            'opened_at' => Carbon::parse('2026-09-04 10:00:00'),
+            'closed_at' => Carbon::parse('2026-09-04 10:20:00'),
+        ]);
+
+        // 2. Duplicate synced position with EXTERNAL and 0 entry price
+        Position::create([
+            'symbol' => 'ADA-USDT',
+            'interval' => '5m',
+            'direction' => 'SHORT',
+            'signal_type' => 'EXTERNAL',
+            'status' => Position::STATUS_CLOSED,
+            'entry_price' => 0.0,
+            'stop_price' => 0.0,
+            'target1' => 0.0,
+            'target2' => 0.0,
+            'quantity' => 100.0,
+            'size' => 1.0,
+            'exit_price' => 0.2183,
+            'realized_pnl' => 40.0,
+            'commission' => 4.0,
+            'funding_fee' => 0.0,
+            'external_id' => $extId,
+            'entry_context' => null,
+            'opened_at' => Carbon::parse('2026-09-04 07:00:00'),
+            'closed_at' => Carbon::parse('2026-09-04 12:00:00'),
+        ]);
+
+        $service = app(DailyPositionReportService::class);
+        $reportData = $service->buildReportData(Carbon::parse('2026-09-04', 'UTC'), 'UTC');
+
+        // Only 1 position should remain after deduplication
+        $this->assertCount(1, $reportData['closed_positions']);
+        /** @var Position $kept */
+        $kept = $reportData['closed_positions']->first();
+        $this->assertSame('BOUNCE', $kept->signal_type);
+        $this->assertEquals(0.2199, $kept->entry_price);
+        $this->assertEquals(40.0, $reportData['stats']['gross_pnl']);
+    }
 }
