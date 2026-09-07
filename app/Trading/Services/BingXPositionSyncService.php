@@ -41,6 +41,11 @@ class BingXPositionSyncService
 
         // 1. Fetch active open positions from BingX
         $bingxOpenPositions = $this->fetchOpenPositions($targetSymbol);
+        if ($bingxOpenPositions === null) {
+            $result->messages[] = 'Failed to fetch open positions from BingX API. Skipping reconciliation to prevent false closures.';
+
+            return $result;
+        }
 
         // Index BingX positions by "SYMBOL:DIRECTION"
         $bingxOpenMap = [];
@@ -68,14 +73,27 @@ class BingXPositionSyncService
             $sym = (string) $bPos['symbol'];
             $dir = strtoupper((string) $bPos['positionSide']);
             $amt = abs((float) ($bPos['positionAmt'] ?? 0.0));
-            $entryPrice = (float) ($bPos['entryPrice'] ?? 0.0);
+            $entryPrice = (float) ($bPos['avgPrice'] ?? $bPos['entryPrice'] ?? 0.0);
             $leverage = isset($bPos['leverage']) ? (int) $bPos['leverage'] : null;
             $extId = isset($bPos['positionId']) ? (string) $bPos['positionId'] : (isset($bPos['positionID']) ? (string) $bPos['positionID'] : null);
 
-            if (isset($localOpenMap[$key])) {
+            /** @var Position|null $lPos */
+            $lPos = $localOpenMap[$key] ?? null;
+            if ($lPos === null && $extId !== null) {
+                $lPos = Position::query()->where('external_id', $extId)->first();
+                if ($lPos !== null && $lPos->status !== Position::STATUS_OPEN) {
+                    $lPos->status = Position::STATUS_OPEN;
+                    $lPos->closed_at = null;
+                    $lPos->exit_price = null;
+                    $lPos->realized_pnl = null;
+                    $lPos->exit_type = null;
+                    $lPos->exit_reason = null;
+                    $localOpenMap[$key] = $lPos;
+                }
+            }
+
+            if ($lPos !== null) {
                 // Existing open position: update quantities, entry price, and leverage if changed
-                /** @var Position $lPos */
-                $lPos = $localOpenMap[$key];
                 $changed = false;
 
                 if (abs($lPos->quantity - $amt) > 0.0001) {
@@ -95,6 +113,30 @@ class BingXPositionSyncService
                     $changed = true;
                 }
 
+                // If stop or target not set, try to resolve from active bracket orders
+                if ($lPos->stop_price <= 0.0 || $lPos->target1 <= 0.0) {
+                    $openOrders = $this->fetchOpenOrders($sym);
+                    foreach ($openOrders as $order) {
+                        $type = (string) ($order['type'] ?? '');
+                        $sp = (float) ($order['stopPrice'] ?? 0.0);
+                        if (in_array($type, ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT'], true) && $sp > 0.0 && $lPos->target1 <= 0.0) {
+                            $lPos->target1 = $sp;
+                            $changed = true;
+                        } elseif (in_array($type, ['STOP_MARKET', 'STOP'], true) && $sp > 0.0 && $lPos->stop_price <= 0.0) {
+                            $lPos->stop_price = $sp;
+                            $changed = true;
+                        }
+                    }
+                    if ($lPos->stop_price > 0.0 && $lPos->target1 > 0.0 && $lPos->entry_price > 0.0) {
+                        $risk = abs($lPos->entry_price - $lPos->stop_price);
+                        $reward = abs($lPos->target1 - $lPos->entry_price);
+                        if ($risk > 0.0) {
+                            $lPos->rr_ratio = round($reward / $risk, 2);
+                            $changed = true;
+                        }
+                    }
+                }
+
                 $lPos->synced_at = now();
                 if (! $dryRun) {
                     $lPos->save();
@@ -110,17 +152,40 @@ class BingXPositionSyncService
                     ? Carbon::createFromTimestampMs((int) $bPos['updateTime'])
                     : now();
 
+                $stopPrice = 0.0;
+                $target1 = 0.0;
+                $rrRatio = 0.0;
+
+                $openOrders = $this->fetchOpenOrders($sym);
+                foreach ($openOrders as $order) {
+                    $type = (string) ($order['type'] ?? '');
+                    $sp = (float) ($order['stopPrice'] ?? 0.0);
+                    if (in_array($type, ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT'], true) && $sp > 0.0) {
+                        $target1 = $sp;
+                    } elseif (in_array($type, ['STOP_MARKET', 'STOP'], true) && $sp > 0.0) {
+                        $stopPrice = $sp;
+                    }
+                }
+                if ($stopPrice > 0.0 && $target1 > 0.0 && $entryPrice > 0.0) {
+                    $risk = abs($entryPrice - $stopPrice);
+                    $reward = abs($target1 - $entryPrice);
+                    if ($risk > 0.0) {
+                        $rrRatio = round($reward / $risk, 2);
+                    }
+                }
+
                 if (! $dryRun) {
-                    Position::create([
+                    $newPos = Position::create([
                         'symbol' => $sym,
                         'interval' => (string) config('exchange.default_timeframe', '5m'),
                         'direction' => $dir,
                         'signal_type' => 'EXTERNAL',
                         'status' => Position::STATUS_OPEN,
                         'entry_price' => $entryPrice,
-                        'stop_price' => 0.0,
-                        'target1' => 0.0,
+                        'stop_price' => $stopPrice,
+                        'target1' => $target1,
                         'target2' => 0.0,
+                        'rr_ratio' => $rrRatio,
                         'quantity' => $amt,
                         'size' => 1.0,
                         'leverage' => $leverage,
@@ -128,10 +193,11 @@ class BingXPositionSyncService
                         'opened_at' => $openedAt,
                         'synced_at' => now(),
                     ]);
+                    $localOpenMap[$key] = $newPos;
                 }
 
                 $result->imported++;
-                $result->messages[] = "Imported external open position {$sym} {$dir}: qty={$amt}, entry={$entryPrice}";
+                $result->messages[] = "Imported external open position {$sym} {$dir}: qty={$amt}, entry={$entryPrice}, tp={$target1}, sl={$stopPrice}";
             }
         }
 
@@ -622,11 +688,11 @@ class BingXPositionSyncService
     }
 
     /**
-     * Fetch active open positions from BingX.
+     * Fetch active open positions from BingX. Returns null on API error / rate limit.
      *
-     * @return list<array<string, mixed>>
+     * @return list<array<string, mixed>>|null
      */
-    public function fetchOpenPositions(?string $symbol = null): array
+    public function fetchOpenPositions(?string $symbol = null): ?array
     {
         $params = [];
         if ($symbol !== null) {
@@ -635,7 +701,12 @@ class BingXPositionSyncService
 
         $response = $this->get('/openApi/swap/v2/user/positions', $params);
         if (($response['code'] ?? -1) !== 0) {
-            return [];
+            Log::warning('BingX API failed to fetch open positions', [
+                'code' => $response['code'] ?? null,
+                'msg' => $response['msg'] ?? null,
+            ]);
+
+            return null;
         }
 
         $items = (array) ($response['data'] ?? []);
@@ -687,6 +758,21 @@ class BingXPositionSyncService
         }
 
         $response = $this->get('/openApi/swap/v2/trade/allOrders', $params);
+        if (($response['code'] ?? -1) !== 0) {
+            return [];
+        }
+
+        return (array) ($response['data']['orders'] ?? []);
+    }
+
+    /**
+     * Fetch active open orders for a symbol.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function fetchOpenOrders(string $symbol): array
+    {
+        $response = $this->get('/openApi/swap/v2/trade/openOrders', ['symbol' => $symbol]);
         if (($response['code'] ?? -1) !== 0) {
             return [];
         }

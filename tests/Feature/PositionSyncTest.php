@@ -314,4 +314,47 @@ class PositionSyncTest extends TestCase
             'external_id' => 'bnb_pos_99',
         ]);
     }
+
+    public function test_sync_does_not_close_positions_when_api_rate_limits(): void
+    {
+        // Setup an open position locally
+        $pos = Position::create([
+            'symbol' => 'BNB-USDT',
+            'interval' => '5m',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 748.21,
+            'stop_price' => 756.25,
+            'target1' => 731.80,
+            'target2' => 0.0,
+            'quantity' => 6.08,
+            'size' => 1.0,
+            'external_id' => 'bnb_pos_rate_limit',
+            'opened_at' => now(),
+        ]);
+
+        // Mock BingX returning rate limit error 100410
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response([
+                'code' => 100410,
+                'msg' => 'The endpoint trigger frequency limit rule is currently in the disabled period',
+            ]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync();
+
+        // Must NOT close the local position
+        $this->assertEquals(0, $result->closed);
+        $this->assertDatabaseHas('positions', [
+            'id' => $pos->id,
+            'status' => Position::STATUS_OPEN,
+        ]);
+    }
 }
+
