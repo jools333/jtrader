@@ -74,7 +74,7 @@ class BounceStrategyTest extends TestCase
 
         // 12 candles: approach level 100.0, bounce up with volume confirmation (150 > 100 * 1.15)
         $candles = $this->baseline(10, 105.0, 100.5);
-        $candles[] = $this->candle(100.5, 101.0, 99.8, 100.2, 100.0); // touch zone (99.8 in [97.5, 102.5])
+        $candles[] = $this->candle(100.5, 101.0, 99.8, 100.2, 100.0); // touch zone (99.8 in [96.25, 103.75])
         $candles[] = $this->candle(100.2, 102.5, 100.0, 102.0, 150.0); // bounce >= 99.8 + 0.5 = 100.3, volume surge
 
         $n = count($candles);
@@ -85,7 +85,7 @@ class BounceStrategyTest extends TestCase
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
-        $strategy = new BounceStrategy(minEntryScore: 80.0);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
@@ -105,12 +105,12 @@ class BounceStrategyTest extends TestCase
         $atr = 5.0;
 
         // 12 candles: touch level 100.0 (low 99.8).
-        // All 5 Hard filters pass (approach 99.8 in [97.5, 102.5], normal atr, trend, entry_zone, no_climax)
+        // Hard filters pass (normal atr, no_climax)
         // Soft criterion bullish_confirmation passes (ema8 rising) & volume_surge passes (150 > 115).
         // Soft criterion atr_bounce FAILS: minLow 100.0 + 0.10*atr (0.5) = 100.5, but close is 100.3 < 100.5
         // Result: 7/8 criteria pass = 87.5%, all Hard filters passed -> entry generated!
         $candles = $this->baseline(10, 108.0, 103.0);
-        $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0); // minLow 100.0 in [97.5, 102.5]
+        $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0); // minLow 100.0 in [96.25, 103.75]
         $candles[] = $this->candle(100.5, 100.8, 100.1, 100.3, 150.0); // close 100.3 < 100.5 (atr_bounce fails), volume passes
 
         $n = count($candles);
@@ -121,72 +121,103 @@ class BounceStrategyTest extends TestCase
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
-        $strategy = new BounceStrategy(minEntryScore: 80.0);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
         $this->assertEquals(87.5, $diag->score);
         $this->assertFalse($diag->isFullSignal);
 
-        // evaluate should return entrySignal because all Hard filters passed and 87.5 >= minEntryScore 80.0
+        // evaluate should return entrySignal because all Hard filters passed and 87.5 >= minEntryScore 75.0
         $signal = $strategy->evaluate($ctx, $planner);
         $this->assertNotNull($signal);
         $this->assertSame(Direction::Long, $signal->direction);
     }
 
-    public function test_bounce_rejects_entry_when_hard_filter_fails_even_at_87_score(): void
+    public function test_bounce_long_generates_entry_at_75_percent_score(): void
     {
         $level = 100.0;
         $atr = 5.0;
 
-        // Level approach (Hard filter) fails: pierced too deep (min low 97.0 < 97.5)
-        // But price bounced to 98.0 (>= 97.0 + 0.5), in entry zone [96.75, 103.25], trend & atr pass, volume passes (7/8 = 87.5%)
-        $candles = $this->baseline(10, 105.0, 100.5);
-        $candles[] = $this->candle(100.0, 100.5, 97.0, 97.5, 100.0); // pierced too deep (low 97.0 < 97.5 -> level_approach fails!)
-        $candles[] = $this->candle(97.5, 98.5, 97.5, 98.0, 150.0); // bounce to 98.0 >= 97.5, volume surge
+        // 12 candles: approach level 100.0
+        // 2 Soft criteria fail: atr_bounce fails (close 100.3 < 100.5) AND volume fails (100 < 115)
+        // Hard filters (normal_atr, no_climax) pass.
+        // Other 4 soft criteria pass (trend, approach, entry_zone, confirmation).
+        // Result: 6/8 criteria pass = 75.0%, both Hard filters pass -> entry generated!
+        $candles = $this->baseline(10, 108.0, 103.0);
+        $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0); // minLow 100.0
+        $candles[] = $this->candle(100.5, 100.8, 100.1, 100.3, 100.0); // close 100.3 < 100.5 (atr_bounce fails), volume 100 < 115 (volume fails)
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);
         $ema8[$n - 1] = 96.0; // rising
-        $ema50 = array_fill(0, $n, 90.0); // price 98.0 > ema50 90.0
+        $ema50 = array_fill(0, $n, 90.0); // price (100.1) > ema50 (90)
 
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
-        $strategy = new BounceStrategy(minEntryScore: 80.0);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
-        $this->assertEquals(87.5, $diag->score);
+        $this->assertEquals(75.0, $diag->score);
 
-        // evaluate MUST reject entry because Hard filter level_approach failed!
+        $signal = $strategy->evaluate($ctx, $planner);
+        $this->assertNotNull($signal);
+        $this->assertSame(Direction::Long, $signal->direction);
+    }
+
+    public function test_bounce_rejects_entry_when_hard_filter_normal_atr_fails(): void
+    {
+        $level = 100.0;
+        $atr = 0.05; // 0.05 / 100 = 0.05% < min 0.20% -> normal_atr Hard filter fails!
+
+        $candles = $this->baseline(10, 100.5, 100.1);
+        $candles[] = $this->candle(100.1, 100.2, 99.98, 100.0, 100.0);
+        $candles[] = $this->candle(100.0, 100.2, 100.0, 100.15, 150.0);
+
+        $n = count($candles);
+        $ema8 = array_fill(0, $n, 95.0);
+        $ema8[$n - 1] = 96.0; // rising
+        $ema50 = array_fill(0, $n, 90.0);
+
+        $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
+        $planner = new TradePlanner(['tp_percent' => 0.35]);
+
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
+        $diag = $strategy->diagnose($ctx, $planner);
+
+        $this->assertNotNull($diag);
+        $this->assertFalse($diag->criteria['normal_atr']->passed);
+
+        // evaluate MUST reject entry because Hard filter normal_atr failed!
         $signal = $strategy->evaluate($ctx, $planner);
         $this->assertNull($signal);
     }
 
-    public function test_bounce_rejects_entry_when_score_below_80(): void
+    public function test_bounce_rejects_entry_when_score_below_75(): void
     {
         $level = 100.0;
         $atr = 5.0;
 
-        // 2 criteria fail: entry_zone (close 104 > 103.25) AND trend fails (falling EMA8, below EMA50)
+        // 3 criteria fail: entry_zone (close 106 > 104.25), volume (100 < 115), trend (falling EMA8, below EMA50)
         $candles = $this->baseline(10, 105.0, 100.5);
         $candles[] = $this->candle(100.5, 101.0, 99.8, 100.2, 100.0);
-        $candles[] = $this->candle(100.2, 104.5, 100.0, 104.0, 100.0); // entry_zone fails (104.0 > 103.25) & volume fails (100 < 115)
+        $candles[] = $this->candle(100.2, 106.5, 100.0, 106.0, 100.0);
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);
         $ema8[$n - 1] = 94.0; // falling (trend fails for Long)
-        $ema50 = array_fill(0, $n, 105.0); // price (104) < ema50 (105) (trend fails)
+        $ema50 = array_fill(0, $n, 110.0); // price (106) < ema50 (110) (trend fails)
 
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
-        $strategy = new BounceStrategy(minEntryScore: 80.0);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
-        $this->assertLessThan(80.0, $diag->score);
+        $this->assertLessThan(75.0, $diag->score);
 
         $signal = $strategy->evaluate($ctx, $planner);
         $this->assertNull($signal);
@@ -215,7 +246,7 @@ class BounceStrategyTest extends TestCase
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
-        $strategy = new BounceStrategy(minEntryScore: 80.0);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
@@ -250,7 +281,7 @@ class BounceStrategyTest extends TestCase
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
-        $strategy = new BounceStrategy(minEntryScore: 80.0);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);

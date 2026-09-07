@@ -100,17 +100,17 @@ and Filament pagination — it is compiled in the Dockerfile via `docker-php-ext
 Trading logic is located in `app/Trading/`:
 - **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window.
 - **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector with dual-layer Hard/Soft criteria:
-  - **Hard Filters (100% strictly mandatory for entry)**:
-    1. *Trend Alignment (`strict_trend`)*: EMA8 slope confirms direction (rising for LONG, falling for SHORT) AND price beyond EMA50.
-    2. *Level Approach (`level_approach`)*: local extreme within $[L - 0.50 \times \text{ATR}, L + 0.50 \times \text{ATR}]$.
-    3. *Normal Volatility (`normal_atr`)*: ATR $> 0.20\%$ of current price.
-    4. *Entry Zone (`entry_zone`)*: entry close within $0.65 \times \text{ATR}$ of key level.
-    5. *Anti-Climax Breakdown Protection (`no_climax`)*: no breakdown climax candle ($V \ge 2.2 \times V_{\text{avg}}$ with body $\ge 0.40 \times \text{ATR}$ closing at the extreme) in the approach.
-  - **Soft Price Action & Volume Criteria (3 scored conditions)**:
-    1. *ATR Bounce (`atr_bounce`)*: bounce $\ge 0.10 \times \text{ATR}$ from local extreme.
-    2. *Confirmation Candle (`bullish_confirmation` / `bearish_confirmation`)*: trigger candle matches direction or EMA8 confirms.
-    3. *Volume Surge (`volume_surge`)*: trigger candle volume $\ge 1.15 \times V_{\text{avg}}$.
-  - *Entry Rule*: All 5 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 80.0% = at least 7/8 criteria).
+  - **Hard Filters (100% strictly mandatory risk safeguards)**:
+    1. *Normal Volatility (`normal_atr`)*: ATR $> 0.20\%$ of current price (prevents entries in dead flat markets).
+    2. *Anti-Climax Breakdown Protection (`no_climax`)*: no breakdown climax candle ($V \ge 2.2 \times V_{\text{avg}}$ with body $\ge 0.40 \times \text{ATR}$ closing at the extreme) in the approach.
+  - **Soft Price Action, Trend & Volume Criteria (6 scored conditions)**:
+    1. *Level Approach (`level_approach`)*: local extreme within $[L - 0.75 \times \text{ATR}, L + 0.75 \times \text{ATR}]$.
+    2. *Entry Zone (`entry_zone`)*: entry close within $0.85 \times \text{ATR}$ of key level.
+    3. *Trend Alignment (`strict_trend`)*: EMA8 slope confirms direction (rising for LONG, falling for SHORT) AND price beyond EMA50.
+    4. *ATR Bounce (`atr_bounce`)*: bounce $\ge 0.10 \times \text{ATR}$ from local extreme.
+    5. *Confirmation Candle (`bullish_confirmation` / `bearish_confirmation`)*: trigger candle matches direction or EMA8 confirms.
+    6. *Volume Surge (`volume_surge`)*: trigger candle volume $\ge 1.15 \times V_{\text{avg}}$.
+  - *Entry Rule*: Both Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 75.0% = at least 6/8 criteria).
 - **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
   - `BTC-USDT` is excluded from opening positions (`config('trading.excluded_symbols')`), but streams via WebSocket for market regime analysis.
   - Altcoin LONG entries are blocked if BTC drops $> 0.20\%$ over 3 bars or if `BTC EMA8 < EMA21` and BTC price $< \text{EMA50}$.
@@ -164,3 +164,7 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *Total Trades*: 12 trades, Realized PnL: -$69.90, Fees: -$41.39, **Net PnL: -$111.28**.
   - *BounceStrategy*: 4 trades, **3/4 wins (75% Win Rate)**, Realized: +$7.92, Fees: -$13.87, Net: -$5.94 (LINK: +$3.75, ETH: +$13.80, ADA: +$15.34, BNB: -$38.83).
   - *BtcLeadLagStrategy*: 8 trades, **0/8 wins net (0% Win Rate)**, Realized: -$77.82, Fees: -$27.52, Net: -$105.34 (failed due to simultaneous 6-long cascade at 00:30 MSK followed by sharp BTC reversal). Now completely disabled.
+- **2026-09-05**:
+  - *Total Trades*: 5 trades (early morning noise before deduplication fixes). Realized PnL: -$0.40, Fees: -$14.38, **Net PnL: -$12.57**.
+- **2026-09-06**:
+  - *Total Trades*: 4 trades, **3/4 wins (75% Win Rate)**, Realized: +$30.98, Fees: -$15.28, **Net PnL: +$15.70** (ADA: +$37.87, SOL: +$6.93, LINK: +$0.88, XRP: -$29.98). Verified positive net return with all commissions covered.

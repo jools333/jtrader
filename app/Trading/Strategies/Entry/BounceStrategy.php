@@ -23,13 +23,13 @@ final class BounceStrategy implements EntryStrategyInterface
 {
     public function __construct(
         private readonly ?StrategyLoggerInterface $logger = null,
-        private readonly float $minEntryScore = 80.0,
+        private readonly float $minEntryScore = 75.0,
         private readonly int $lookbackCandles = 10,
-        private readonly float $levelApproachAtr = 0.50,
+        private readonly float $levelApproachAtr = 0.75,
         private readonly float $bounceReversalAtr = 0.10,
         private readonly float $minAtrPercent = 0.20,
         private readonly float $stopBufferAtr = 0.25,
-        private readonly float $entryZoneAtr = 0.65,
+        private readonly float $entryZoneAtr = 0.85,
         private readonly float $volumeMultiplier = 1.15,
         private readonly float $climaxVolumeMultiplier = 2.20,
     ) {}
@@ -245,12 +245,9 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слабый объем на отскоке (нет подтверждения покупателей)';
         }
 
-        // Hard filters: 100% strictly mandatory for entry
+        // Hard filters: 100% strictly mandatory for entry (critical risk safeguards)
         $hardFilters = [
-            'strict_trend' => $passedTrend,
-            'level_approach' => $passedApproach,
             'normal_atr' => $passedNormalAtr,
-            'entry_zone' => $passedEntryZone,
             'no_climax' => $passedNoClimax,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
@@ -459,12 +456,9 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слабый объем на отскоке (нет подтверждения продавцов)';
         }
 
-        // Hard filters: 100% strictly mandatory for entry
+        // Hard filters: 100% strictly mandatory for entry (critical risk safeguards)
         $hardFilters = [
-            'strict_trend' => $passedTrend,
-            'level_approach' => $passedApproach,
             'normal_atr' => $passedNormalAtr,
-            'entry_zone' => $passedEntryZone,
             'no_climax' => $passedNoClimax,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);

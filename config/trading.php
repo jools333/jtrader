@@ -64,7 +64,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'agent' => [
-        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 80.0),
+        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 75.0),
         'min_rr' => 2.0,          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
@@ -82,8 +82,8 @@ return [
 
         // Настройки BounceStrategy
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
-        'bounce_level_approach_atr' => 0.50, // Допустимая зона от уровня для теста (в ATR)
-        'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.65), // Допустимая зона для точки входа с учетом отскока (в ATR)
+        'bounce_level_approach_atr' => (float) env('TRADING_BOUNCE_LEVEL_APPROACH_ATR', 0.75), // Допустимая зона от уровня для теста (в ATR)
+        'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.85), // Допустимая зона для точки входа с учетом отскока (в ATR)
         'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
