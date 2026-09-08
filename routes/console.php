@@ -29,4 +29,5 @@ Schedule::command('positions:sync')
 
 Schedule::command('report:daily-telegram --sync')
     ->dailyAt('23:55')
+    ->timezone(config('services.telegram.report_timezone', 'Europe/Moscow'))
     ->withoutOverlapping(10);
