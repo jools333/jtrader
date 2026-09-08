@@ -168,3 +168,12 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *Total Trades*: 5 trades (early morning noise before deduplication fixes). Realized PnL: -$0.40, Fees: -$14.38, **Net PnL: -$12.57**.
 - **2026-09-06**:
   - *Total Trades*: 4 trades, **3/4 wins (75% Win Rate)**, Realized: +$30.98, Fees: -$15.28, **Net PnL: +$15.70** (ADA: +$37.87, SOL: +$6.93, LINK: +$0.88, XRP: -$29.98). Verified positive net return with all commissions covered.
+- **2026-09-07**:
+  - *Total Trades*: 13 trades, **8/13 wins (61.5% Win Rate)**, Realized: +$162.42, Fees: -$47.90, **Net PnL: +$114.52** (XRP SHORT: +$50.14, SOL SHORT: +$28.58, SOL SHORT: +$24.62, DOGE SHORT: +$24.50, BNB SHORT: +$23.68, ADA SHORT: +$17.47, ETH SHORT: +$14.55, LINK SHORT: +$9.62, XRP SHORT: -$7.71, ADA LONG: -$7.33, LINK LONG: -$6.05, ADA SHORT: -$26.05, DOGE SHORT: -$31.50).
+  - *SHORT Performance*: 11 trades, **8/11 wins (72.7% Win Rate)**, Net PnL: **+$127.90**.
+  - *LONG Performance*: 2 trades, **0/2 wins (0% Win Rate)**, Net PnL: **-$13.38**.
+- **2026-09-08 (In Progress)**:
+  - *Closed Trades*: 1 trade (DOGE SHORT hit SL: -$42.78 net).
+  - *Open Trades (05:40 MSK)*: 3 positions (LINK SHORT +$25.41, ADA SHORT +$4.91, DOGE SHORT -$1.64 = **+$28.68 uPnL**).
+  - *Account Balance / Equity*: **91,108.20 VST / 91,130.76 VST** (+92.20 VST net growth since 07.09 recalibration).
+

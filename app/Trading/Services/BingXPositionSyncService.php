@@ -81,15 +81,25 @@ class BingXPositionSyncService
             $lPos = $localOpenMap[$key] ?? null;
             if ($lPos === null && $extId !== null) {
                 $lPos = Position::query()->where('external_id', $extId)->first();
-                if ($lPos !== null && $lPos->status !== Position::STATUS_OPEN) {
-                    $lPos->status = Position::STATUS_OPEN;
-                    $lPos->closed_at = null;
-                    $lPos->exit_price = null;
-                    $lPos->realized_pnl = null;
-                    $lPos->exit_type = null;
-                    $lPos->exit_reason = null;
-                    $localOpenMap[$key] = $lPos;
-                }
+            }
+            if ($lPos === null) {
+                // Match recent local position (e.g. opened within last 15 minutes) missing external_id
+                $lPos = Position::query()
+                    ->where('symbol', $sym)
+                    ->where('direction', $dir)
+                    ->whereNull('external_id')
+                    ->where('opened_at', '>=', now()->subMinutes(15))
+                    ->latest('opened_at')
+                    ->first();
+            }
+            if ($lPos !== null && $lPos->status !== Position::STATUS_OPEN) {
+                $lPos->status = Position::STATUS_OPEN;
+                $lPos->closed_at = null;
+                $lPos->exit_price = null;
+                $lPos->realized_pnl = null;
+                $lPos->exit_type = null;
+                $lPos->exit_reason = null;
+                $localOpenMap[$key] = $lPos;
             }
 
             if ($lPos !== null) {
@@ -204,6 +214,22 @@ class BingXPositionSyncService
         // 4. Local positions that are marked OPEN, but NO LONGER OPEN on BingX (closed externally)
         foreach ($localOpenMap as $key => $lPos) {
             if (! isset($bingxOpenMap[$key])) {
+                // Check if position was opened very recently and might still be a resting LIMIT order waiting for execution
+                if ($lPos->opened_at && $lPos->opened_at->isAfter(now()->subMinutes(3))) {
+                    $openOrders = $this->fetchOpenOrders($lPos->symbol);
+                    $hasPendingEntry = false;
+                    foreach ($openOrders as $order) {
+                        if (! empty($lPos->entry_order_id) && (string) ($order['orderId'] ?? '') === (string) $lPos->entry_order_id) {
+                            $hasPendingEntry = true;
+                            break;
+                        }
+                    }
+                    if ($hasPendingEntry) {
+                        // Order is still resting on the book waiting to fill: do not prematurely close!
+                        continue;
+                    }
+                }
+
                 // Position was closed on BingX!
                 $closeData = $this->resolveClosedPositionData($lPos, $lookbackDays);
 
