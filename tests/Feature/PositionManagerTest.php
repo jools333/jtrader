@@ -124,6 +124,33 @@ class PositionManagerTest extends TestCase
         $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
     }
 
+    public function test_quantity_uses_symbol_max_position_pct_override(): void
+    {
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 10_000.0),
+            config: array_merge((array) config('trading'), [
+                'risk_percent' => 5.0,
+                'paper_balance' => 10_000.0,
+                'max_position_pct' => 10.0,
+                'symbol_max_position_pct' => ['DOGE-USDT' => 2.5],
+            ]),
+        );
+
+        $result = $manager->process('DOGE-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+
+        $this->assertNotNull($result->entrySignal);
+        $position = Position::where('symbol', 'DOGE-USDT')->first();
+        $this->assertNotNull($position);
+
+        // Notional max at 2.5% of 10000 = $250.
+        // At price ~100, max quantity is 250 / 100 = 2.5
+        $signal = $result->entrySignal;
+        $expectedMaxQty = round(10_000.0 * 2.5 / 100.0 / $signal->entryPrice, 4);
+
+        $this->assertEqualsWithDelta($expectedMaxQty, $position->quantity, 0.0001);
+    }
+
     public function test_open_position_is_closed_on_target(): void
     {
         $manager = $this->manager();

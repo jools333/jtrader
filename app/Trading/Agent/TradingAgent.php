@@ -90,6 +90,7 @@ final class TradingAgent implements TradingAgentInterface
                 entryZoneAtr: (float) ($this->config['bounce_entry_zone_atr'] ?? 0.85),
                 volumeMultiplier: (float) ($this->config['bounce_volume_multiplier'] ?? 1.15),
                 climaxVolumeMultiplier: (float) ($this->config['bounce_climax_volume_mult'] ?? 2.20),
+                symbolMinEntryScores: (array) ($this->config['symbol_min_entry_score'] ?? []),
             ),
         ];
 

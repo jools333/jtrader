@@ -113,14 +113,18 @@ Trading logic is located in `app/Trading/`:
   - *Entry Rule*: Both Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 75.0% = at least 6/8 criteria).
 - **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
   - `BTC-USDT` is excluded from opening positions (`config('trading.excluded_symbols')`), but streams via WebSocket for market regime analysis.
-  - Altcoin LONG entries are blocked if BTC drops $> 0.20\%$ over 3 bars or if `BTC EMA8 < EMA21` and BTC price $< \text{EMA50}$.
-  - Altcoin SHORT entries are blocked if BTC pumps $> 0.20\%$ over 3 bars.
+  - Altcoin LONG entries are blocked if BTC drops $> 0.20\%$ over 3 bars OR if BTC is in a macro downtrend (`BTC price < EMA50` AND `BTC EMA8 < EMA21`).
+  - Altcoin SHORT entries are blocked if BTC pumps $> 0.20\%$ over 3 bars OR if BTC is in a macro uptrend (`BTC price > EMA50` AND `BTC EMA8 > EMA21`).
 - **BTC Lead-Lag Fast Exit (`EarlyReversalStrategy`, `ExitReason::BtcReversal`)**:
   - Detects sharp BTC counter-impulses ($\ge 0.35\%$ drop for LONG or $\ge 0.35\%$ pump for SHORT over 2 bars) and executes immediate market exit on altcoins before they follow BTC down.
-- **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`)**:
+- **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`, `BingXPositionSyncService`)**:
   - *Orphan Order Cleanup*: `cancelAllOrders(symbol)` called on 100% position close and before opening new positions.
   - *Single Position per Symbol*: prevents accumulating duplicate legs across intervals.
   - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=30` prevents re-entering the same symbol for 30 minutes after close.
+  - *Per-Symbol Risk & Quality Caps*:
+    - `symbol_max_position_pct`: DOGE capped at 2.5% notional (vs 10% default) to restrict drawdown on noisy meme wicks.
+    - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
+  - *Pending Limit Order Sync Protection*: 3-minute grace period with resting order inspection prevents prematurely marking unfilled limit entries as closed.
 - **Active Entry Strategies Status**:
   - `BounceStrategy`: Multi-candle Price Action bounce setup from key horizontal levels with technical Stop Loss placed beyond support/resistance ($L \pm 0.25 \times \text{ATR}$) and calibrated Take Profit ($R:R \ge 2.0$, ensuring fees are well covered). The only active entry strategy.
   - `BtcLeadLagStrategy`: Cross-asset momentum spillover / lead-lag entry following BTC impulses. Disabled (`TRADING_LEAD_LAG_ENABLED=false`) due to correlation risk on multi-asset cascade entries during false BTC breakouts.

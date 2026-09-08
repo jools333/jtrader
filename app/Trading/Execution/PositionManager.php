@@ -227,7 +227,10 @@ final class PositionManager
             $quantity = min($quantity, $maxQty);
         }
 
-        $maxPositionPct = (float) ($this->config['max_position_pct'] ?? 0.0);
+        $symbolMaxPos = ($symbol !== null && isset($this->config['symbol_max_position_pct'][$symbol]))
+            ? (float) $this->config['symbol_max_position_pct'][$symbol]
+            : null;
+        $maxPositionPct = $symbolMaxPos ?? (float) ($this->config['max_position_pct'] ?? 0.0);
         if ($maxPositionPct > 0.0 && $signal->entryPrice > 0.0) {
             $maxByNotional = round($balance * $maxPositionPct / 100.0 / $signal->entryPrice, 4);
             $quantity = min($quantity, $maxByNotional);

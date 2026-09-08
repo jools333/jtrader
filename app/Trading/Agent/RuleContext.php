@@ -255,9 +255,31 @@ final class RuleContext
             return null;
         }
 
-        $c = end($this->btcCandles);
+        $c = $this->btcCandles[count($this->btcCandles) - 1] ?? null;
 
         return $c ? $c->close : null;
+    }
+
+    public function btcEma8(): ?float
+    {
+        if (empty($this->btcEma8)) {
+            return null;
+        }
+
+        $v = $this->btcEma8[count($this->btcEma8) - 1] ?? null;
+
+        return $v !== null ? (float) $v : null;
+    }
+
+    public function btcEma21(): ?float
+    {
+        if (empty($this->btcEma21)) {
+            return null;
+        }
+
+        $v = $this->btcEma21[count($this->btcEma21) - 1] ?? null;
+
+        return $v !== null ? (float) $v : null;
     }
 
     public function btcEma50(): ?float
@@ -266,9 +288,9 @@ final class RuleContext
             return null;
         }
 
-        $v = end($this->btcEma50);
+        $v = $this->btcEma50[count($this->btcEma50) - 1] ?? null;
 
-        return $v !== false ? (float) $v : null;
+        return $v !== null ? (float) $v : null;
     }
 
     /** Price change of the current symbol over the last `k` candles in percent (e.g. -0.25). */

@@ -342,4 +342,70 @@ class TradingAgentTest extends TestCase
         $this->assertSame(ExitReason::BtcReversal, $exit->reason);
         $this->assertSame(100, $exit->closePercent);
     }
+
+    public function test_btc_bearish_macro_regime_blocks_altcoin_long_entry(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+
+        // Valid long bounce candles
+        $candles = $this->baseline(45, 92, 98);
+        $candles[] = $this->candle(98.0, 103.0, 97.8, 102.5);
+        $candles[] = $this->candle(102.5, 104.5, 102.0, 104.0);
+        $candles[] = $this->candle(104.0, 104.2, 101.5, 102.0);
+        $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8);
+        $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);
+        $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
+
+        // BTC candles in a steady downtrend from 80000 to 70000 (Price < EMA50, EMA8 < EMA21)
+        // Last 3 candles are flat at 70000 so btcRet3 = 0.00% (no sudden dump)
+        $btcCandles = $this->baseline(52, 80000, 70000);
+        $btcCandles[] = $this->candle(70000, 70010, 69990, 70000);
+        $btcCandles[] = $this->candle(70000, 70010, 69990, 70000);
+        $btcCandles[] = $this->candle(70000, 70010, 69990, 70000);
+
+        $agent = new TradingAgent([
+            'min_rr' => 2.0,
+            'btc_filter_enabled' => true,
+        ]);
+
+        $result = $agent->evaluate($candles, $level, $atr, null, [], 'LINK-USDT', '5m', $btcCandles);
+
+        // LONG entry must be blocked by BTC macro downtrend regime
+        $this->assertNull($result->entrySignal);
+    }
+
+    public function test_btc_bullish_macro_regime_blocks_altcoin_short_entry(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+
+        // Valid short bounce candles
+        $candles = $this->baseline(45, 108, 102);
+        $candles[] = $this->candle(102.0, 102.2, 97.0, 97.5);
+        $candles[] = $this->candle(97.5, 98.0, 95.5, 96.0);
+        $candles[] = $this->candle(96.0, 98.5, 95.8, 98.0);
+        $candles[] = $this->candle(98.0, 99.8, 97.8, 99.2);
+        $candles[] = $this->candle(99.2, 100.4, 98.8, 99.8);
+        $candles[] = $this->candle(99.8, 100.3, 99.4, 99.9);
+        $candles[] = $this->candle(99.9, 100.1, 96.0, 96.2, 2000);
+
+        // BTC candles in a steady uptrend from 70000 to 80000 (Price > EMA50, EMA8 > EMA21)
+        // Last 3 candles are flat at 80000 so btcRet3 = 0.00% (no sudden pump)
+        $btcCandles = $this->baseline(52, 70000, 80000);
+        $btcCandles[] = $this->candle(80000, 80010, 79990, 80000);
+        $btcCandles[] = $this->candle(80000, 80010, 79990, 80000);
+        $btcCandles[] = $this->candle(80000, 80010, 79990, 80000);
+
+        $agent = new TradingAgent([
+            'min_rr' => 2.0,
+            'btc_filter_enabled' => true,
+        ]);
+
+        $result = $agent->evaluate($candles, $level, $atr, null, [], 'LINK-USDT', '5m', $btcCandles);
+
+        // SHORT entry must be blocked by BTC macro uptrend regime
+        $this->assertNull($result->entrySignal);
+    }
 }

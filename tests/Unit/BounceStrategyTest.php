@@ -292,4 +292,35 @@ class BounceStrategyTest extends TestCase
         $signal = $strategy->evaluate($ctx, $planner);
         $this->assertNull($signal);
     }
+
+    public function test_bounce_respects_symbol_min_entry_score_override(): void
+    {
+        $atr = 5.0;
+        $level = 100.0;
+
+        // Create a 75% score setup (6 out of 8 criteria pass)
+        $candles = $this->baseline(10, 108.0, 103.0);
+        $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0);
+        $candles[] = $this->candle(100.5, 100.8, 100.1, 100.3, 100.0); // close 100.3 < 100.5 (atr_bounce fails), volume fails
+
+        $n = count($candles);
+        $ema8 = array_fill(0, $n, 95.0);
+        $ema8[$n - 1] = 96.0;
+        $ema50 = array_fill(0, $n, 90.0);
+
+        $planner = new TradePlanner(['tp_percent' => 0.35]);
+
+        $strategy = new BounceStrategy(
+            minEntryScore: 75.0,
+            symbolMinEntryScores: ['DOGE-USDT' => 85.0]
+        );
+
+        // ADA-USDT uses standard 75.0% threshold -> allowed
+        $adaCtx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
+        $this->assertNotNull($strategy->evaluate($adaCtx, $planner));
+
+        // DOGE-USDT requires 85.0% threshold -> blocked because score is 75.0%
+        $dogeCtx = $this->createContext($candles, $level, $atr, 'DOGE-USDT', $ema8, $ema50);
+        $this->assertNull($strategy->evaluate($dogeCtx, $planner));
+    }
 }

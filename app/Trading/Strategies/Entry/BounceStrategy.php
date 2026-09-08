@@ -21,6 +21,9 @@ use App\Trading\Enums\SignalType;
  */
 final class BounceStrategy implements EntryStrategyInterface
 {
+    /**
+     * @param array<string, float> $symbolMinEntryScores
+     */
     public function __construct(
         private readonly ?StrategyLoggerInterface $logger = null,
         private readonly float $minEntryScore = 75.0,
@@ -32,6 +35,7 @@ final class BounceStrategy implements EntryStrategyInterface
         private readonly float $entryZoneAtr = 0.85,
         private readonly float $volumeMultiplier = 1.15,
         private readonly float $climaxVolumeMultiplier = 2.20,
+        private readonly array $symbolMinEntryScores = [],
     ) {}
 
     public function evaluate(RuleContext $ctx, TradePlanner $planner): ?EntrySignal
@@ -45,7 +49,11 @@ final class BounceStrategy implements EntryStrategyInterface
             $this->logger->log($eval);
         }
 
-        return $eval->score >= $this->minEntryScore ? $eval->entrySignal : null;
+        $minScore = ($ctx->symbol !== null && isset($this->symbolMinEntryScores[$ctx->symbol]))
+            ? (float) $this->symbolMinEntryScores[$ctx->symbol]
+            : $this->minEntryScore;
+
+        return $eval->score >= $minScore ? $eval->entrySignal : null;
     }
 
     public function diagnose(RuleContext $ctx, TradePlanner $planner): ?StrategyEvaluationResult

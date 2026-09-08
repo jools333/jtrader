@@ -75,6 +75,12 @@ final class EntryGuard
                         if ($ctx->btcEma8Falling() === true && $ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcLastPrice() < $ctx->btcEma50()) {
                             return false;
                         }
+                        // Макро-режим: блокируем LONG, если BTC находится в устойчивом медвежьем тренде (цена ниже EMA50 и EMA8 < EMA21)
+                        if ($ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcEma8() !== null && $ctx->btcEma21() !== null) {
+                            if ($ctx->btcLastPrice() < $ctx->btcEma50() && $ctx->btcEma8() < $ctx->btcEma21()) {
+                                return false;
+                            }
+                        }
                     } elseif ($direction === Direction::Short) {
                         // Для SHORT: блокируем вход, если BTC растет более чем на maxPump % за 3 свечи
                         if ($btcRet3 !== null && $btcRet3 > $maxPump) {
@@ -83,6 +89,12 @@ final class EntryGuard
                         // Или если краткосрочный тренд BTC растет и находится выше EMA50
                         if ($ctx->btcEma8Rising() === true && $ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcLastPrice() > $ctx->btcEma50()) {
                             return false;
+                        }
+                        // Макро-режим: блокируем SHORT, если BTC находится в устойчивом бычьем тренде (цена выше EMA50 и EMA8 > EMA21)
+                        if ($ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcEma8() !== null && $ctx->btcEma21() !== null) {
+                            if ($ctx->btcLastPrice() > $ctx->btcEma50() && $ctx->btcEma8() > $ctx->btcEma21()) {
+                                return false;
+                            }
                         }
                     }
                 }

@@ -35,6 +35,9 @@ return [
     // Hard cap: notional position value ≤ X% of balance (0 = disabled).
     // Prevents oversized positions when the stop is very tight relative to price.
     'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 10.0),
+    'symbol_max_position_pct' => [
+        'DOGE-USDT' => (float) env('TRADING_MAX_POSITION_PCT_DOGE', 2.5),
+    ],
     // Minimum cooldown in minutes between positions on the same symbol (0 = disabled).
     'entry_cooldown_minutes' => (int) env('TRADING_ENTRY_COOLDOWN_MINUTES', 30),
 
@@ -65,6 +68,9 @@ return [
     */
     'agent' => [
         'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 75.0),
+        'symbol_min_entry_score' => [
+            'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 80.0),
+        ],
         'min_rr' => 2.0,          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
