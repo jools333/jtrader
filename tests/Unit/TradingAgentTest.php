@@ -408,4 +408,63 @@ class TradingAgentTest extends TestCase
         // SHORT entry must be blocked by BTC macro uptrend regime
         $this->assertNull($result->entrySignal);
     }
+
+    public function test_quick_tp_mode_sets_scalp_take_profit_and_passes_rr_filter(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+
+        $candles = $this->baseline(45, 92, 98);
+        $candles[] = $this->candle(98.0, 103.0, 97.8, 102.5);
+        $candles[] = $this->candle(102.5, 104.5, 102.0, 104.0);
+        $candles[] = $this->candle(104.0, 104.2, 101.5, 102.0);
+        $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8);
+        $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);
+        $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
+
+        $agent = new TradingAgent([
+            'tp_mode' => 'quick',
+            'min_profit_percent' => 0.35,
+            'fee_maker_percent' => 0.02,
+            'fee_taker_percent' => 0.05,
+        ]);
+
+        $result = $agent->evaluate($candles, $level, $atr, null, [], 'ETH-USDT', '5m');
+        $this->assertNotNull($result->entrySignal);
+
+        $signal = $result->entrySignal;
+        // In quick mode, target1 distance is exactly (0.35% + 0.07%) = 0.42% of entry (103.8 * 0.0042 = 0.43596)
+        $expectedTarget1 = 103.8 + (103.8 * 0.0042);
+        $this->assertEqualsWithDelta($expectedTarget1, $signal->target1, 0.01);
+    }
+
+    public function test_rr_tp_mode_sets_standard_rr_take_profit(): void
+    {
+        $atr = 10.0;
+        $level = 100.0;
+
+        $candles = $this->baseline(45, 92, 98);
+        $candles[] = $this->candle(98.0, 103.0, 97.8, 102.5);
+        $candles[] = $this->candle(102.5, 104.5, 102.0, 104.0);
+        $candles[] = $this->candle(104.0, 104.2, 101.5, 102.0);
+        $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8);
+        $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);
+        $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
+        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
+
+        $agent = new TradingAgent([
+            'tp_mode' => 'rr',
+            'target1_r' => 2.0,
+            'min_rr' => 2.0,
+        ]);
+
+        $result = $agent->evaluate($candles, $level, $atr, null, [], 'ETH-USDT', '5m');
+        $this->assertNotNull($result->entrySignal);
+
+        $signal = $result->entrySignal;
+        $stopDist = 103.8 - $signal->stop;
+        $tpDist = $signal->target1 - 103.8;
+        $this->assertEqualsWithDelta(2.0, $tpDist / $stopDist, 0.05);
+    }
 }

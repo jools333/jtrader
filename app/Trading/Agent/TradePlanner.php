@@ -76,24 +76,36 @@ final class TradePlanner
         $minStopDistance = $entry * 0.001;
         $stopDistance = max($stopDistance, $minStopDistance);
 
-        // Дистанция тейк-профита с учетом целевого R:R (target1_r, по умолчанию 2.0R)
-        $target1R = $this->cfg('target1_r', 2.0);
-        $tpDistance = max($minTpDistance, $stopDistance * $target1R);
+        // Дистанция тейк-профита:
+        // В режиме 'quick' Target 1 ставится строго на minTpDistance (скальпинг),
+        // в режиме 'rr' - с учетом целевого R:R (target1_r, по умолчанию 2.0R)
+        $tpMode = (string) ($this->config['tp_mode'] ?? 'quick');
+        $target1R = (float) $this->cfg('target1_r', 2.0);
+        if ($tpMode === 'quick') {
+            $tpDistance = $minTpDistance;
+        } else {
+            $tpDistance = max($minTpDistance, $stopDistance * $target1R);
+        }
+
+        // Дистанция второй цели (Target 2)
+        $target2R = (float) $this->cfg('target2_r', 4.0);
+        $target2Distance = max($tpDistance * $tpMultiplier, $stopDistance * $target2R);
 
         // Расчет для позиции LONG (покупка)
         if ($dir === Direction::Long) {
             $stop = $entry - $stopDistance;
             $target1 = $entry + $tpDistance;
-            $target2 = $entry + ($tpDistance * $tpMultiplier);
+            $target2 = $entry + $target2Distance;
         } else {
             // Расчет для позиции SHORT (продажа)
             $stop = $entry + $stopDistance;
             $target1 = $entry - $tpDistance;
-            $target2 = $entry - ($tpDistance * $tpMultiplier);
+            $target2 = $entry - $target2Distance;
         }
 
-        // Рассчитываем фактический R:R для Target 1
-        $rrRatio = $stopDistance > 0.0 ? round($tpDistance / $stopDistance, 2) : $target1R;
+        // Рассчитываем фактический R:R для Target 1 (в режиме quick - структурный R:R второй цели)
+        $rewardDistance = $tpMode === 'quick' ? $target2Distance : $tpDistance;
+        $rrRatio = $stopDistance > 0.0 ? round($rewardDistance / $stopDistance, 2) : $target1R;
 
         // Создаем и возвращаем DTO сигнала на вход с рассчитанными параметрами
         return new EntrySignal(

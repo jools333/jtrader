@@ -247,7 +247,8 @@ final class TradingAgent implements TradingAgentInterface
             }
 
             // Фильтр R:R: отбрасываем сделки с соотношением прибыль/риск меньше порога
-            if ($signal->rrRatio < $minRr) {
+            $tpMode = (string) ($this->config['tp_mode'] ?? 'quick');
+            if ($tpMode !== 'quick' && $signal->rrRatio < $minRr) {
                 continue;
             }
 

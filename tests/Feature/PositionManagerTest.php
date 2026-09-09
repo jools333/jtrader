@@ -360,4 +360,94 @@ class PositionManagerTest extends TestCase
         $managerDisabled->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
         $this->assertDatabaseCount('positions', 2);
     }
+
+    public function test_dynamic_break_even_moves_stop_when_profit_threshold_reached(): void
+    {
+        // Open LONG position at 100.0 with stop 98.0
+        $pos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'LONG',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 98.0,
+            'target1' => 101.0,
+            'target2' => 102.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(10),
+        ]);
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'agent' => [
+                    'break_even_enabled' => true,
+                    'break_even_trigger_pct' => 0.25,
+                    'break_even_buffer_pct' => 0.05,
+                    'trailing_stop_enabled' => false,
+                ],
+            ]),
+        );
+
+        // At 100.15 (+0.15% profit), BE trigger (0.25%) is not met
+        $newStop = $manager->manageDynamicProtection($pos, 100.15);
+        $this->assertNull($newStop);
+        $pos->refresh();
+        $this->assertEquals(98.0, $pos->stop_price);
+
+        // At 100.30 (+0.30% profit), BE trigger (0.25%) is met -> move stop to 100.05
+        $newStop = $manager->manageDynamicProtection($pos, 100.30);
+        $this->assertNotNull($newStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(100.05, $pos->stop_price, 0.01);
+        $this->assertSame('break_even', $pos->exit_context['protection']['reason']);
+    }
+
+    public function test_dynamic_trailing_stop_locks_profit(): void
+    {
+        // Open SHORT position at 10.0 with stop already at break-even (9.995)
+        $pos = Position::create([
+            'symbol' => 'LINK-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 10.0,
+            'stop_price' => 9.995,
+            'target1' => 9.5,
+            'target2' => 9.0,
+            'quantity' => 10.0,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(30),
+        ]);
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'agent' => [
+                    'trailing_stop_enabled' => true,
+                    'trailing_trigger_pct' => 0.40,
+                    'trailing_distance_pct' => 0.20,
+                ],
+            ]),
+        );
+
+        // Price drops to 9.90 (+1.00% profit for SHORT)
+        // Trailing stop candidate = 9.90 * (1 + 0.0020) = 9.9198
+        $newStop = $manager->manageDynamicProtection($pos, 9.90);
+        $this->assertNotNull($newStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(9.9198, $pos->stop_price, 0.001);
+        $this->assertSame('trailing_stop', $pos->exit_context['protection']['reason']);
+
+        // Price retraces up slightly to 9.91: trailing stop does NOT move backwards
+        $retraceStop = $manager->manageDynamicProtection($pos, 9.91);
+        $this->assertNull($retraceStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(9.9198, $pos->stop_price, 0.001);
+    }
 }

@@ -16,6 +16,7 @@ use App\Trading\DTO\EntrySignal;
 use App\Trading\DTO\ExitSignal;
 use App\Trading\DTO\IndicatorSnapshot;
 use App\Trading\DTO\PositionState;
+use App\Trading\Enums\Direction;
 use App\Trading\Enums\ExitType;
 use App\Trading\Services\DailyPositionReportService;
 use Illuminate\Support\Carbon;
@@ -71,6 +72,8 @@ final class PositionManager
         if ($open !== null && $result->exitSignal !== null) {
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
             $this->attachChart($position, $candles);
+        } elseif ($open !== null) {
+            $this->manageDynamicProtection($open, $this->currentPrice($candles));
         } elseif ($open === null
             && $result->entrySignal !== null
             && ! $isExcluded
@@ -451,5 +454,124 @@ final class PositionManager
         $last = end($candles);
 
         return $last ? $last->openTime : null;
+    }
+
+    /**
+     * Manages Break-Even and Trailing Stop protection for an active open position.
+     */
+    public function manageDynamicProtection(Position $position, float $price): ?float
+    {
+        if ($price <= 0.0 || $position->entry_price <= 0.0) {
+            return null;
+        }
+
+        $agentConfig = (array) ($this->config['agent'] ?? []);
+        $isLong = $position->direction() === Direction::Long;
+        $entry = $position->entry_price;
+
+        // Calculate current unrealized profit percentage
+        $profitPct = $isLong
+            ? (($price - $entry) / $entry) * 100.0
+            : (($entry - $price) / $entry) * 100.0;
+
+        $newStop = null;
+        $reason = null;
+
+        // 1. Trailing Stop Check (Highest Priority Protection when profit >= trailing_trigger_pct)
+        $trailingEnabled = (bool) ($agentConfig['trailing_stop_enabled'] ?? $this->config['trailing_stop_enabled'] ?? true);
+        $trailingTrigger = (float) ($agentConfig['trailing_trigger_pct'] ?? $this->config['trailing_trigger_pct'] ?? 0.40);
+        $trailingDistance = (float) ($agentConfig['trailing_distance_pct'] ?? $this->config['trailing_distance_pct'] ?? 0.20) / 100.0;
+
+        if ($trailingEnabled && $profitPct >= $trailingTrigger) {
+            $candidateTrailingStop = $isLong
+                ? $price * (1.0 - $trailingDistance)
+                : $price * (1.0 + $trailingDistance);
+
+            // For Long, trailing stop must be higher than current stop
+            // For Short, trailing stop must be lower than current stop
+            $isBetter = $isLong
+                ? ($candidateTrailingStop > $position->stop_price)
+                : ($candidateTrailingStop < $position->stop_price);
+
+            if ($isBetter) {
+                $newStop = $candidateTrailingStop;
+                $reason = 'trailing_stop';
+            }
+        }
+
+        // 2. Break-Even Check (if trailing didn't trigger, or trailing stop is worse than BE)
+        $beEnabled = (bool) ($agentConfig['break_even_enabled'] ?? $this->config['break_even_enabled'] ?? true);
+        $beTrigger = (float) ($agentConfig['break_even_trigger_pct'] ?? $this->config['break_even_trigger_pct'] ?? 0.25);
+        $beBuffer = (float) ($agentConfig['break_even_buffer_pct'] ?? $this->config['break_even_buffer_pct'] ?? 0.05) / 100.0;
+
+        if ($newStop === null && $beEnabled && $profitPct >= $beTrigger) {
+            $candidateBeStop = $isLong
+                ? $entry * (1.0 + $beBuffer)
+                : $entry * (1.0 - $beBuffer);
+
+            $isBetter = $isLong
+                ? ($candidateBeStop > $position->stop_price)
+                : ($candidateBeStop < $position->stop_price);
+
+            if ($isBetter) {
+                $newStop = $candidateBeStop;
+                $reason = 'break_even';
+            }
+        }
+
+        if ($newStop === null) {
+            return null;
+        }
+
+        // 3. Minimum shift threshold check (avoid spamming exchange API for micro-shifts)
+        $minShiftPct = (float) ($agentConfig['protection_min_shift_pct'] ?? $this->config['protection_min_shift_pct'] ?? 0.03) / 100.0;
+        $shiftPct = abs($newStop - $position->stop_price) / $position->entry_price;
+        if ($shiftPct < $minShiftPct) {
+            return null;
+        }
+
+        // Round stop price to appropriate decimals
+        $newStop = round($newStop, $this->priceDecimals($position->entry_price));
+
+        Log::info(sprintf(
+            '[dynamic_protection] Relocating stop for %s %s: %.6f -> %.6f (%s, profit: %.2f%%, price: %.6f)',
+            $position->symbol,
+            $position->direction,
+            $position->stop_price,
+            $newStop,
+            $reason,
+            $profitPct,
+            $price
+        ));
+
+        // Relocate stop on exchange
+        $this->executor->moveStop($position->symbol, $position->direction(), $newStop);
+
+        // Update stop in database
+        $exitContext = (array) ($position->exit_context ?? []);
+        $exitContext['protection'] = [
+            'reason' => $reason,
+            'profit_pct' => round($profitPct, 3),
+            'updated_at' => Carbon::now()->toIso8601String(),
+        ];
+
+        $position->update([
+            'stop_price' => $newStop,
+            'exit_context' => $exitContext,
+        ]);
+
+        return $newStop;
+    }
+
+    private function priceDecimals(float $price): int
+    {
+        if ($price >= 100) {
+            return 2;
+        }
+        if ($price >= 1) {
+            return 4;
+        }
+
+        return 6;
     }
 }

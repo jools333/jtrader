@@ -78,12 +78,13 @@ return [
         'symbol_min_entry_score' => [
             'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 80.0),
         ],
-        'min_rr' => 2.0,          // reject entries with reward:risk below this
+        'min_rr' => (float) env('TRADING_MIN_RR', 0.5),          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
         'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
-        'target1_r' => 2.0,       // target 1 at 2R
+        'target1_r' => 2.0,       // target 1 at 2R (used in 'rr' mode)
         'target2_r' => 4.0,       // target 2 at 4R
+        'tp_mode' => env('TRADING_TP_MODE', 'quick'), // 'quick' (скальп-тейк) или 'rr' (соотношение R:R)
 
         // BTC Anchor (межрыночный фильтр)
         'btc_filter_enabled' => (bool) env('TRADING_BTC_FILTER_ENABLED', true),
@@ -110,6 +111,15 @@ return [
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
         'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)
+
+        // Настройки автоматического безубытка (Break-Even) и трейлинг-стопа
+        'break_even_enabled' => (bool) env('TRADING_BE_ENABLED', true),
+        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.25), // порог активации безубытка (+0.25% прибыли)
+        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.05),   // буфер комиссии (+0.05% от точки входа)
+        'trailing_stop_enabled' => (bool) env('TRADING_TRAILING_ENABLED', true),
+        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.40), // порог активации трейлинга (+0.40% прибыли)
+        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.20), // отступ трейлинга от пика (0.20%)
+        'protection_min_shift_pct' => (float) env('TRADING_PROTECTION_MIN_SHIFT_PCT', 0.03), // мин. сдвиг для вызова moveStop (0.03%)
 
         // Настройки BtcLeadLagStrategy (опережающе-запаздывающий арбитраж за BTC)
         'lead_lag_enabled' => (bool) env('TRADING_LEAD_LAG_ENABLED', false),
