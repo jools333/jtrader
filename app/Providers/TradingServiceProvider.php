@@ -66,6 +66,8 @@ class TradingServiceProvider extends ServiceProvider
             executor: $app->make(TradeExecutorInterface::class),
             config: (array) config('trading'),
             chart: $app->make(ChartRenderer::class),
+            telegram: $app->make(\App\Services\Telegram\TelegramService::class),
+            reportService: $app->make(\App\Trading\Services\DailyPositionReportService::class),
         ));
 
         $this->app->singleton(\App\Trading\Services\BtcImpulseDetector::class, fn (Application $app) => new \App\Trading\Services\BtcImpulseDetector(

@@ -7,6 +7,7 @@ namespace App\Trading\Execution;
 use App\Jobs\RenderPositionChartJob;
 use App\Market\DTO\Candle;
 use App\Models\Position;
+use App\Services\Telegram\TelegramService;
 use App\Trading\Charting\ChartRenderer;
 use App\Trading\Contracts\TradeExecutorInterface;
 use App\Trading\Contracts\TradingAgentInterface;
@@ -16,7 +17,11 @@ use App\Trading\DTO\ExitSignal;
 use App\Trading\DTO\IndicatorSnapshot;
 use App\Trading\DTO\PositionState;
 use App\Trading\Enums\ExitType;
+use App\Trading\Services\DailyPositionReportService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Drives one agent evaluation for a (symbol, interval) and acts on the result:
@@ -35,6 +40,8 @@ final class PositionManager
         private readonly TradeExecutorInterface $executor,
         private readonly array $config = [],
         private readonly ?ChartRenderer $chart = null,
+        private readonly ?TelegramService $telegram = null,
+        private readonly ?DailyPositionReportService $reportService = null,
     ) {}
 
     /**
@@ -64,7 +71,13 @@ final class PositionManager
         if ($open !== null && $result->exitSignal !== null) {
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
             $this->attachChart($position, $candles);
-        } elseif ($open === null && $result->entrySignal !== null && ! $isExcluded && ! $this->isCoolingDown($symbol)) {
+        } elseif ($open === null
+            && $result->entrySignal !== null
+            && ! $isExcluded
+            && ! $this->hasReachedMaxOpenPositions()
+            && ! $this->isCoolingDown($symbol)
+            && ! $this->isDailyLossLimitReached()
+        ) {
             $entryOpenTime = $this->currentOpenTime($candles);
             $position = $this->openFromSignal($symbol, $interval, $result->entrySignal, $result->indicators, $level, $entryOpenTime);
             $this->attachChart($position, $candles);
@@ -263,24 +276,144 @@ final class PositionManager
     }
 
     /**
+     * Whether the maximum number of concurrent open positions across all symbols has been reached.
+     */
+    public function hasReachedMaxOpenPositions(): bool
+    {
+        $max = (int) ($this->config['max_open_positions'] ?? 0);
+        if ($max <= 0) {
+            return false;
+        }
+
+        $openCount = Position::query()->open()->count();
+        if ($openCount >= $max) {
+            Log::info("[risk_guard] Maximum open positions limit reached ({$openCount}/{$max}). Skipping entry.");
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Whether this symbol has had an opened or closed position within the cooldown window.
+     * If the most recent closed position was stopped out (STOP_LOSS), uses stop_loss_cooldown_minutes.
      */
     public function isCoolingDown(string $symbol): bool
     {
         $minutes = (int) ($this->config['entry_cooldown_minutes'] ?? 0);
-        if ($minutes <= 0) {
+        if ($minutes > 0) {
+            $since = Carbon::now()->subMinutes($minutes);
+            $hasRecent = Position::query()
+                ->where('symbol', $symbol)
+                ->where(function ($q) use ($since) {
+                    $q->where('opened_at', '>=', $since)
+                        ->orWhere('closed_at', '>=', $since);
+                })
+                ->exists();
+
+            if ($hasRecent) {
+                return true;
+            }
+        }
+
+        $slMinutes = (int) ($this->config['stop_loss_cooldown_minutes'] ?? 0);
+        if ($slMinutes > 0 && $slMinutes > $minutes) {
+            $slSince = Carbon::now()->subMinutes($slMinutes);
+            $hasRecentSl = Position::query()
+                ->where('symbol', $symbol)
+                ->where('closed_at', '>=', $slSince)
+                ->where(function ($q) {
+                    $q->where('exit_type', ExitType::StopLoss->value)
+                        ->orWhere('exit_reason', 'stop_loss_hit');
+                })
+                ->exists();
+
+            if ($hasRecentSl) {
+                Log::info("[risk_guard] Symbol {$symbol} is in extended stop-loss cooldown ({$slMinutes}m). Skipping entry.");
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the net closed PnL for the current calendar day has reached or exceeded the daily loss limit.
+     */
+    public function isDailyLossLimitReached(): bool
+    {
+        $limit = (float) ($this->config['daily_loss_limit'] ?? 0.0);
+        if ($limit <= 0.0) {
             return false;
         }
 
-        $since = Carbon::now()->subMinutes($minutes);
+        $tz = (string) config('services.telegram.report_timezone', config('app.timezone', 'UTC'));
+        $now = Carbon::now($tz);
+        $todayStart = $now->copy()->startOfDay()->utc();
+        $todayEnd = $now->copy()->endOfDay()->utc();
 
-        return Position::query()
-            ->where('symbol', $symbol)
-            ->where(function ($q) use ($since) {
-                $q->where('opened_at', '>=', $since)
-                    ->orWhere('closed_at', '>=', $since);
-            })
-            ->exists();
+        $positions = Position::query()
+            ->where('status', Position::STATUS_CLOSED)
+            ->whereBetween('closed_at', [$todayStart, $todayEnd])
+            ->get();
+
+        if ($positions->isEmpty()) {
+            return false;
+        }
+
+        $reportService = $this->reportService ?? (app()->bound(DailyPositionReportService::class) ? app(DailyPositionReportService::class) : null);
+        $dedup = $reportService ? $reportService->deduplicatePositions($positions) : $positions;
+
+        $netPnl = 0.0;
+        foreach ($dedup as $pos) {
+            $netPnl += $pos->netPnl() ?? 0.0;
+        }
+
+        $maxAllowedLoss = -abs($limit);
+        if ($netPnl <= $maxAllowedLoss) {
+            Log::warning(sprintf(
+                '[circuit_breaker] Daily loss limit reached: Net PnL %.2f USDT <= %.2f USDT (limit: %.2f USDT). Pausing entries.',
+                $netPnl,
+                $maxAllowedLoss,
+                $limit
+            ));
+
+            $this->notifyDailyLossCircuitBreaker($netPnl, $limit, $now->format('Y-m-d'));
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Send a one-time Telegram alert when the daily loss circuit breaker triggers.
+     */
+    private function notifyDailyLossCircuitBreaker(float $netPnl, float $limit, string $dateStr): void
+    {
+        $cacheKey = "circuit_breaker_alert_{$dateStr}";
+        if (Cache::has($cacheKey)) {
+            return;
+        }
+
+        Cache::put($cacheKey, true, Carbon::now()->endOfDay());
+
+        try {
+            $telegram = $this->telegram ?? (app()->bound(TelegramService::class) ? app(TelegramService::class) : null);
+            if ($telegram && $telegram->isConfigured()) {
+                $pnlFormatted = number_format($netPnl, 2, '.', '');
+                $limitFormatted = number_format($limit, 2, '.', '');
+                $message = "🚨 <b>Сработал дневной стоп-лосс (Circuit Breaker)!</b>\n\n".
+                    "Чистый убыток за сегодня достиг <code>{$pnlFormatted} USDT</code> при лимите <code>-{$limitFormatted} USDT</code>.\n".
+                    'Открытие новых позиций временно приостановлено до конца суток для защиты депозита.';
+
+                $telegram->sendMessage($message);
+            }
+        } catch (Throwable $e) {
+            Log::error('[circuit_breaker] Failed to send Telegram alert: '.$e->getMessage());
+        }
     }
 
     /**

@@ -221,4 +221,143 @@ class PositionManagerTest extends TestCase
         $this->assertNotNull($result->entrySignal);
         $this->assertDatabaseCount('positions', 0);
     }
+
+    public function test_max_open_positions_blocks_new_entries(): void
+    {
+        // Create 3 open positions on different symbols
+        foreach (['ADA-USDT', 'SOL-USDT', 'LINK-USDT'] as $sym) {
+            Position::create([
+                'symbol' => $sym,
+                'interval' => '1h',
+                'direction' => 'SHORT',
+                'signal_type' => 'BOUNCE',
+                'status' => Position::STATUS_OPEN,
+                'entry_price' => 100.0,
+                'stop_price' => 105.0,
+                'target1' => 95.0,
+                'target2' => 90.0,
+                'quantity' => 1.0,
+                'size' => 1.0,
+                'opened_at' => now()->subMinutes(15),
+            ]);
+        }
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'max_open_positions' => 3,
+                'entry_cooldown_minutes' => 0,
+            ]),
+        );
+
+        // When 3 positions are open, 4th entry is blocked
+        $result = $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 3);
+
+        // Close 1 position so only 2 remain open
+        Position::where('symbol', 'ADA-USDT')->update([
+            'status' => Position::STATUS_CLOSED,
+            'closed_at' => now()->subHours(2),
+        ]);
+
+        // Now entry is allowed
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 4);
+        $this->assertTrue(Position::where('symbol', 'ETH-USDT')->where('status', Position::STATUS_OPEN)->exists());
+    }
+
+    public function test_stop_loss_extended_cooldown(): void
+    {
+        // Position was closed via Stop Loss 45 minutes ago
+        Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_CLOSED,
+            'entry_price' => 100.0,
+            'stop_price' => 105.0,
+            'target1' => 95.0,
+            'target2' => 90.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'exit_type' => 'STOP_LOSS',
+            'exit_reason' => 'stop_loss_hit',
+            'opened_at' => now()->subMinutes(60),
+            'closed_at' => now()->subMinutes(45),
+        ]);
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'entry_cooldown_minutes' => 30,
+                'stop_loss_cooldown_minutes' => 60,
+            ]),
+        );
+
+        // Standard 30m cooldown would have expired, but 60m SL cooldown blocks entry
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 1);
+
+        // Advance closed_at to 65 minutes ago, opened_at to 6 hours ago
+        Position::where('symbol', 'ETH-USDT')->update([
+            'closed_at' => now()->subMinutes(65),
+            'opened_at' => now()->subHours(6),
+        ]);
+
+        // Now entry is allowed
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 2);
+    }
+
+    public function test_daily_loss_limit_circuit_breaker(): void
+    {
+        // Closed position today with net loss -165 USDT
+        Position::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_CLOSED,
+            'entry_price' => 100.0,
+            'stop_price' => 105.0,
+            'target1' => 95.0,
+            'target2' => 90.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'exit_type' => 'STOP_LOSS',
+            'realized_pnl' => -160.0,
+            'commission' => 5.0,
+            'opened_at' => now()->subHours(2),
+            'closed_at' => now()->subHour(),
+        ]);
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'daily_loss_limit' => 150.0,
+                'entry_cooldown_minutes' => 0,
+            ]),
+        );
+
+        // Entry blocked because daily loss (-165 USDT) exceeds limit (150 USDT)
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 1);
+
+        // When circuit breaker is disabled (0), entry proceeds
+        $managerDisabled = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'daily_loss_limit' => 0.0,
+                'entry_cooldown_minutes' => 0,
+            ]),
+        );
+
+        $managerDisabled->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 2);
+    }
 }

@@ -120,7 +120,10 @@ Trading logic is located in `app/Trading/`:
 - **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`, `BingXPositionSyncService`)**:
   - *Orphan Order Cleanup*: `cancelAllOrders(symbol)` called on 100% position close and before opening new positions.
   - *Single Position per Symbol*: prevents accumulating duplicate legs across intervals.
+  - *Max Open Positions*: `TRADING_MAX_OPEN_POSITIONS=3` caps concurrent active positions across all symbols to prevent portfolio-wide stop cascade on macro trend reversals.
   - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=30` prevents re-entering the same symbol for 30 minutes after close.
+  - *Extended Stop-Loss Cooldown*: `TRADING_STOP_LOSS_COOLDOWN_MINUTES=60` enforces 60-minute pause on a symbol after a Stop Loss exit to avoid re-entering into ongoing hostile breakouts.
+  - *Daily Loss Circuit Breaker*: `TRADING_DAILY_LOSS_LIMIT=150.0` pauses opening new positions for the rest of the day if net closed loss reaches -150 USDT, protecting against fee erosion during sideways chop. Sends a single Telegram alert.
   - *Per-Symbol Risk & Quality Caps*:
     - `symbol_max_position_pct`: DOGE capped at 2.5% notional (vs 10% default) to restrict drawdown on noisy meme wicks.
     - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
@@ -176,8 +179,9 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *Total Trades*: 13 trades, **8/13 wins (61.5% Win Rate)**, Realized: +$162.42, Fees: -$47.90, **Net PnL: +$114.52** (XRP SHORT: +$50.14, SOL SHORT: +$28.58, SOL SHORT: +$24.62, DOGE SHORT: +$24.50, BNB SHORT: +$23.68, ADA SHORT: +$17.47, ETH SHORT: +$14.55, LINK SHORT: +$9.62, XRP SHORT: -$7.71, ADA LONG: -$7.33, LINK LONG: -$6.05, ADA SHORT: -$26.05, DOGE SHORT: -$31.50).
   - *SHORT Performance*: 11 trades, **8/11 wins (72.7% Win Rate)**, Net PnL: **+$127.90**.
   - *LONG Performance*: 2 trades, **0/2 wins (0% Win Rate)**, Net PnL: **-$13.38**.
-- **2026-09-08 (In Progress)**:
-  - *Closed Trades*: 1 trade (DOGE SHORT hit SL: -$42.78 net).
-  - *Open Trades (05:40 MSK)*: 3 positions (LINK SHORT +$25.41, ADA SHORT +$4.91, DOGE SHORT -$1.64 = **+$28.68 uPnL**).
-  - *Account Balance / Equity*: **91,108.20 VST / 91,130.76 VST** (+92.20 VST net growth since 07.09 recalibration).
+- **2026-09-08**:
+  - *Total Trades*: 29 trades (whipsaw / intraday reversal). Realized: -$148.84, Fees: -$96.99, **Net PnL: -$245.83** (morning profits +$150 erased by afternoon short squeeze cascade; night entries in ADA, LINK, XRP held overnight).
+- **2026-09-09 (In Progress)**:
+  - *Closed Trades (05:38 MSK)*: 7 trades, **4/7 wins (57.1% Win Rate)**, Realized: +$220.65, Fees: -$22.29, **Net PnL: +$198.36** (LINK SHORT: +$110.66, ADA SHORT: +$96.53, XRP SHORT: +$16.96, SOL LONG: +$7.34, DOGE SHORT: -$12.69, DOGE LONG: -$20.44).
+  - *Account Balance / Equity*: **91,116.04 VST** (+100.04 VST net growth since 07.09 recalibration).
 
