@@ -66,8 +66,9 @@ final class TradePlanner
                 : ($entry * $stopPct);
         }
 
-        // Защита: дистанция стопа не должна превышать максимальный порог (2% или 2 ATR)
-        $maxStopDistance = max($entry * $stopPct, $ctx->atr > 0.0 ? $ctx->atr * 2.0 : 0.0);
+        // Защита: жесткий максимальный потолок стоп-лосса (по умолчанию не более 1.2% от цены входа)
+        $maxStopPct = $this->cfg('max_stop_percent', 1.2) / 100.0;
+        $maxStopDistance = $entry * $maxStopPct;
         if ($maxStopDistance > 0.0) {
             $stopDistance = min($stopDistance, $maxStopDistance);
         }

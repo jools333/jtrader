@@ -101,6 +101,21 @@ final class EntryGuard
             }
         }
 
+        // 4. Старший межрыночный фильтр BTC (BTC Higher Timeframe Regime: 1h)
+        if ($direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcHtfData()) {
+            $btcHtfFilterEnabled = (bool) ($this->config['btc_htf_filter_enabled'] ?? true);
+            if ($btcHtfFilterEnabled) {
+                // Блокируем LONG по альтам, если BTC на старшем таймфрейме в нисходящем тренде
+                if ($direction === Direction::Long && $ctx->btcHtfTrendBearish()) {
+                    return false;
+                }
+                // Блокируем SHORT по альтам, если BTC на старшем таймфрейме в восходящем тренде
+                if ($direction === Direction::Short && $ctx->btcHtfTrendBullish()) {
+                    return false;
+                }
+            }
+        }
+
         // Все защитные фильтры пройдены успешно
         return true;
     }

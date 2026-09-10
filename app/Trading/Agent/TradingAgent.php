@@ -126,6 +126,7 @@ final class TradingAgent implements TradingAgentInterface
         ?string $symbol = null,
         ?string $interval = null,
         ?array $btcCandles = null,
+        ?array $btcHtfCandles = null,
     ): AgentResult {
         // Сбрасываем ключи массива свечей
         $candles = array_values($candles);
@@ -155,6 +156,18 @@ final class TradingAgent implements TradingAgentInterface
             $btcEma50 = SeriesMath::ema($btcCloses, 50);
         }
 
+        // Вычисляем индикаторы BTC HTF, если свечи переданы
+        $btcHtfEma8 = null;
+        $btcHtfEma21 = null;
+        $btcHtfEma50 = null;
+        if (! empty($btcHtfCandles) && count($btcHtfCandles) >= 8) {
+            $btcHtfCandles = array_values($btcHtfCandles);
+            $btcHtfCloses = array_map(static fn (Candle $c) => $c->close, $btcHtfCandles);
+            $btcHtfEma8 = SeriesMath::ema($btcHtfCloses, 8);
+            $btcHtfEma21 = SeriesMath::ema($btcHtfCloses, 21);
+            $btcHtfEma50 = SeriesMath::ema($btcHtfCloses, 50);
+        }
+
         // Создаем снимок текущих значений индикаторов
         $indicators = $this->createIndicatorSnapshot($candles, $atr, $ema8, $ema21, $ema50, $macd);
         // Создаем объект контекста правил со всеми данными
@@ -172,6 +185,10 @@ final class TradingAgent implements TradingAgentInterface
             $btcEma8,
             $btcEma21,
             $btcEma50,
+            $btcHtfCandles,
+            $btcHtfEma8,
+            $btcHtfEma21,
+            $btcHtfEma50,
         );
 
         // Если есть открытая позиция — проверяем стратегии выхода

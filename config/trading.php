@@ -88,6 +88,8 @@ return [
 
         // BTC Anchor (межрыночный фильтр)
         'btc_filter_enabled' => (bool) env('TRADING_BTC_FILTER_ENABLED', true),
+        'btc_htf_filter_enabled' => (bool) env('TRADING_BTC_HTF_FILTER_ENABLED', true), // фильтр старшего таймфрейма BTC
+        'btc_htf_interval' => env('TRADING_BTC_HTF_INTERVAL', '1h'), // таймфрейм для анализа старшего тренда BTC (1h)
         'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.20), // макс допустимый дамп BTC за 3 свечи для входа в LONG
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.20), // макс допустимый памп BTC за 3 свечи для входа в SHORT
         'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.35), // импульсный дамп BTC для опережающего выхода из LONG
@@ -108,6 +110,7 @@ return [
         'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker) или TAKE_PROFIT (Maker)
         'tp_percent' => (float) env('TRADING_TP_PCT', 0.35),             // Чистый профит Target 1 (50% объема) в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
+        'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.2), // Жесткий максимальный порог стоп-лосса (% от цены входа)
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
         'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)

@@ -58,13 +58,14 @@ final class PositionManager
         float $level,
         ?float $atr = null,
         ?array $btcCandles = null,
+        ?array $btcHtfCandles = null,
     ): AgentResult {
         $open = $this->openPosition($symbol, $interval);
 
         $state = $open !== null ? $this->toState($open) : null;
         $recent = $open !== null ? [] : $this->recentSignalTypes($symbol, $interval);
 
-        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval, $btcCandles);
+        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval, $btcCandles, $btcHtfCandles);
 
         $excluded = (array) ($this->config['excluded_symbols'] ?? []);
         $isExcluded = in_array($symbol, $excluded, true);

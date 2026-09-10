@@ -43,6 +43,10 @@ final class RuleContext
         public readonly ?array $btcEma8 = null,
         public readonly ?array $btcEma21 = null,
         public readonly ?array $btcEma50 = null,
+        public readonly ?array $btcHtfCandles = null,
+        public readonly ?array $btcHtfEma8 = null,
+        public readonly ?array $btcHtfEma21 = null,
+        public readonly ?array $btcHtfEma50 = null,
     ) {
         $this->n = count($candles);
         $this->i = $this->n - 1;
@@ -291,6 +295,108 @@ final class RuleContext
         $v = $this->btcEma50[count($this->btcEma50) - 1] ?? null;
 
         return $v !== null ? (float) $v : null;
+    }
+
+    /** Whether BTC higher timeframe (HTF) candle context is available. */
+    public function hasBtcHtfData(): bool
+    {
+        return ! empty($this->btcHtfCandles) && count($this->btcHtfCandles) >= 3;
+    }
+
+    public function btcHtfLastPrice(): ?float
+    {
+        if (! $this->hasBtcHtfData()) {
+            return null;
+        }
+
+        $c = $this->btcHtfCandles[count($this->btcHtfCandles) - 1] ?? null;
+
+        return $c ? $c->close : null;
+    }
+
+    public function btcHtfEma8(): ?float
+    {
+        if (empty($this->btcHtfEma8)) {
+            return null;
+        }
+
+        $v = $this->btcHtfEma8[count($this->btcHtfEma8) - 1] ?? null;
+
+        return $v !== null ? (float) $v : null;
+    }
+
+    public function btcHtfEma21(): ?float
+    {
+        if (empty($this->btcHtfEma21)) {
+            return null;
+        }
+
+        $v = $this->btcHtfEma21[count($this->btcHtfEma21) - 1] ?? null;
+
+        return $v !== null ? (float) $v : null;
+    }
+
+    public function btcHtfEma50(): ?float
+    {
+        if (empty($this->btcHtfEma50)) {
+            return null;
+        }
+
+        $v = $this->btcHtfEma50[count($this->btcHtfEma50) - 1] ?? null;
+
+        return $v !== null ? (float) $v : null;
+    }
+
+    /**
+     * Whether BTC on higher timeframe is in a clear bearish regime:
+     * price below EMA50 or EMA8 < EMA21.
+     */
+    public function btcHtfTrendBearish(): bool
+    {
+        $price = $this->btcHtfLastPrice();
+        $ema50 = $this->btcHtfEma50();
+        $ema8 = $this->btcHtfEma8();
+        $ema21 = $this->btcHtfEma21();
+
+        if ($price === null) {
+            return false;
+        }
+
+        if ($ema50 !== null && $price < $ema50) {
+            return true;
+        }
+
+        if ($ema8 !== null && $ema21 !== null && $ema8 < $ema21) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether BTC on higher timeframe is in a clear bullish regime:
+     * price above EMA50 or EMA8 > EMA21.
+     */
+    public function btcHtfTrendBullish(): bool
+    {
+        $price = $this->btcHtfLastPrice();
+        $ema50 = $this->btcHtfEma50();
+        $ema8 = $this->btcHtfEma8();
+        $ema21 = $this->btcHtfEma21();
+
+        if ($price === null) {
+            return false;
+        }
+
+        if ($ema50 !== null && $price > $ema50) {
+            return true;
+        }
+
+        if ($ema8 !== null && $ema21 !== null && $ema8 > $ema21) {
+            return true;
+        }
+
+        return false;
     }
 
     /** Price change of the current symbol over the last `k` candles in percent (e.g. -0.25). */
