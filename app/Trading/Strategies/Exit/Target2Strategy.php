@@ -27,6 +27,11 @@ final class Target2Strategy implements ExitStrategyInterface
      */
     public function evaluate(RuleContext $ctx, PositionState $position): ?ExitSignal
     {
+        // Если дальняя цель не задана или равна 0, выход по ней невозможен
+        if ($position->target2 <= 0.0) {
+            return null;
+        }
+
         // Текущая цена
         $price = $ctx->price();
         // Флаг лонговой позиции

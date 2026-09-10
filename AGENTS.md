@@ -185,7 +185,14 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *LONG Performance*: 2 trades, **0/2 wins (0% Win Rate)**, Net PnL: **-$13.38**.
 - **2026-09-08**:
   - *Total Trades*: 29 trades (whipsaw / intraday reversal). Realized: -$148.84, Fees: -$96.99, **Net PnL: -$245.83** (morning profits +$150 erased by afternoon short squeeze cascade; night entries in ADA, LINK, XRP held overnight).
-- **2026-09-09 (In Progress)**:
-  - *Closed Trades (05:38 MSK)*: 7 trades, **4/7 wins (57.1% Win Rate)**, Realized: +$220.65, Fees: -$22.29, **Net PnL: +$198.36** (LINK SHORT: +$110.66, ADA SHORT: +$96.53, XRP SHORT: +$16.96, SOL LONG: +$7.34, DOGE SHORT: -$12.69, DOGE LONG: -$20.44).
-  - *Account Balance / Equity*: **91,116.04 VST** (+100.04 VST net growth since 07.09 recalibration).
+- **2026-09-09**:
+  - *Total Trades*: 28 trades, **4/28 wins (14.3% Win Rate)**, Realized PnL: -$65.94, Fees: -$112.00, **Net PnL: -$177.94**.
+  - *Morning Wins*: LINK SHORT: +$110.66, ADA SHORT: +$96.53, XRP SHORT: +$16.96, SOL LONG: +$7.34.
+  - *Incident & Root Cause Analysis*:
+    1. **Dual-Instance Race Condition**: The local dev container was running live `scheduler` and `ws` with `TRADING_EXECUTOR=bingx` concurrently with the remote server. Both bots were opening orders, canceling each other's SL/TP brackets via `cancelAllOrders`, and re-importing the other's positions as `EXTERNAL`. Local container stopped and forced to `TRADING_EXECUTOR=paper`.
+    2. **Zero Target2 Bug on LONGs**: `BingXPositionSyncService` imported external positions with `'target2' => 0.0`. `Target2Strategy` had no `target2 > 0` check, evaluating `$price >= 0.0` as `true` on LONGs and instantly market-closing them within 60 seconds (costing -$61.01 in pure churn fees). Fixed with strict `target <= 0.0` guards in `Target1Strategy` and `Target2Strategy`.
+- **2026-09-10 (In Progress, 05:30 MSK)**:
+  - *Total Trades*: 9 trades, **4/9 wins (44.4% Win Rate)**, Realized: -$32.77, Fees: -$37.75, **Net PnL: -$70.52**.
+  - *Evening Wins with Dynamic Protection*: SOL SHORT: +$9.61 (TP1), LINK SHORT: +$14.25 (TP1), XRP SHORT: +$5.58 (Market), XRP SHORT: +$0.48 (TP1). Break-even moved stop on LINK SHORT to -$0.33 net.
+  - *Account Balance / Equity*: **90,681.58 VST**.
 

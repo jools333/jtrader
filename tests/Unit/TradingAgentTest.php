@@ -467,4 +467,25 @@ class TradingAgentTest extends TestCase
         $tpDist = $signal->target1 - 103.8;
         $this->assertEqualsWithDelta(2.0, $tpDist / $stopDist, 0.05);
     }
+
+    public function test_zero_targets_do_not_trigger_premature_exit_for_long_position(): void
+    {
+        $atr = 10.0;
+        $candles = $this->baseline(50, 95, 100);
+
+        // Position imported with 0.0 target1 and target2 (e.g. from exchange sync)
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 95.0,
+            stopPrice: 85.0,
+            target1: 0.0,
+            target2: 0.0,
+        );
+
+        $agent = new TradingAgent();
+        $result = $agent->evaluate($candles, 95.0, $atr, $position, [], 'LINK-USDT', '5m');
+
+        // Neither Target1 nor Target2 should falsely trigger at price >= 0
+        $this->assertNull($result->exitSignal);
+    }
 }

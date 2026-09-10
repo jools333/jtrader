@@ -32,6 +32,11 @@ final class Target1Strategy implements ExitStrategyInterface
             return null;
         }
 
+        // Если цель не задана или равна 0 (например, у внешних сделок), выход по цели невозможен
+        if ($position->target1 <= 0.0) {
+            return null;
+        }
+
         // Текущая цена
         $price = $ctx->price();
         // Флаг направления
