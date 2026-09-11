@@ -503,7 +503,7 @@ final class PositionManager
         // 2. Break-Even Check (if trailing didn't trigger, or trailing stop is worse than BE)
         $beEnabled = (bool) ($agentConfig['break_even_enabled'] ?? $this->config['break_even_enabled'] ?? true);
         $beTrigger = (float) ($agentConfig['break_even_trigger_pct'] ?? $this->config['break_even_trigger_pct'] ?? 0.25);
-        $beBuffer = (float) ($agentConfig['break_even_buffer_pct'] ?? $this->config['break_even_buffer_pct'] ?? 0.05) / 100.0;
+        $beBuffer = (float) ($agentConfig['break_even_buffer_pct'] ?? $this->config['break_even_buffer_pct'] ?? 0.11) / 100.0;
 
         if ($newStop === null && $beEnabled && $profitPct >= $beTrigger) {
             $candidateBeStop = $isLong
