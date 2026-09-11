@@ -107,7 +107,10 @@ return [
         'bounce_climax_volume_mult' => (float) env('TRADING_BOUNCE_CLIMAX_MULT', 2.20), // Порог кульминации пробоя (падающий нож)
         
         // Настройки тейк-профита, комиссий и защитного стопа
-        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker) или TAKE_PROFIT (Maker)
+        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT'), // TAKE_PROFIT (Maker 0.02%) или TAKE_PROFIT_MARKET (Taker 0.05%)
+        'entry_post_only' => (bool) env('TRADING_ENTRY_POST_ONLY', true), // вход выставляется как Maker (Post-Only, 0.02%)
+        'entry_limit_offset_pct' => (float) env('TRADING_ENTRY_LIMIT_OFFSET_PCT', 0.02), // отступ цены входа для гарантированной постановки в стакан (%)
+        'entry_limit_timeout_minutes' => (int) env('TRADING_ENTRY_LIMIT_TIMEOUT_MINUTES', 5), // тайм-аут отмены неисполненного ордера входа (мин)
         'tp_percent' => (float) env('TRADING_TP_PCT', 0.35),             // Чистый профит Target 1 (50% объема) в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
         'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.2), // Жесткий максимальный порог стоп-лосса (% от цены входа)

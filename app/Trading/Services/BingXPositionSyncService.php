@@ -214,18 +214,35 @@ class BingXPositionSyncService
         // 4. Local positions that are marked OPEN, but NO LONGER OPEN on BingX (closed externally)
         foreach ($localOpenMap as $key => $lPos) {
             if (! isset($bingxOpenMap[$key])) {
-                // Check if position was opened very recently and might still be a resting LIMIT order waiting for execution
-                if ($lPos->opened_at && $lPos->opened_at->isAfter(now()->subMinutes(3))) {
-                    $openOrders = $this->fetchOpenOrders($lPos->symbol);
-                    $hasPendingEntry = false;
-                    foreach ($openOrders as $order) {
-                        if (! empty($lPos->entry_order_id) && (string) ($order['orderId'] ?? '') === (string) $lPos->entry_order_id) {
-                            $hasPendingEntry = true;
-                            break;
-                        }
+                // Check if position was opened as a resting LIMIT order waiting for execution
+                $timeoutMinutes = (int) config('trading.agent.entry_limit_timeout_minutes', 5);
+                $openOrders = $this->fetchOpenOrders($lPos->symbol);
+                $hasPendingEntry = false;
+                foreach ($openOrders as $order) {
+                    if (! empty($lPos->entry_order_id) && (string) ($order['orderId'] ?? '') === (string) $lPos->entry_order_id) {
+                        $hasPendingEntry = true;
+                        break;
                     }
-                    if ($hasPendingEntry) {
-                        // Order is still resting on the book waiting to fill: do not prematurely close!
+                }
+                if ($hasPendingEntry) {
+                    // If order has rested longer than timeout, cancel it!
+                    if ($lPos->opened_at && $lPos->opened_at->isBefore(now()->subMinutes($timeoutMinutes))) {
+                        $this->cancelOrder($lPos->symbol, (string) $lPos->entry_order_id);
+                        if (! $dryRun) {
+                            $lPos->update([
+                                'status' => Position::STATUS_CLOSED,
+                                'exit_price' => $lPos->entry_price,
+                                'realized_pnl' => 0.0,
+                                'commission' => 0.0,
+                                'funding_fee' => 0.0,
+                                'exit_type' => 'CANCELED',
+                                'exit_reason' => 'limit_order_timeout',
+                                'closed_at' => now(),
+                            ]);
+                        }
+                        $result->messages[] = "Cancelled timed-out resting limit entry {$lPos->symbol} (order {$lPos->entry_order_id}) after {$timeoutMinutes}m";
+                    } else {
+                        // Still resting and within timeout: do not prematurely close!
                         continue;
                     }
                 }
@@ -860,6 +877,34 @@ class BingXPositionSyncService
             ]);
 
             return ['code' => -1, 'msg' => $e->getMessage()];
+        }
+    }
+
+    public function cancelOrder(string $symbol, string $orderId): bool
+    {
+        $key = (string) ($this->config['api_key'] ?? '');
+        $secret = (string) ($this->config['api_secret'] ?? '');
+        if ($key === '' || $secret === '') {
+            return false;
+        }
+
+        $params = ['symbol' => $symbol, 'orderId' => $orderId, 'timestamp' => (int) (microtime(true) * 1000)];
+        ksort($params);
+        $query = http_build_query($params);
+        $signature = hash_hmac('sha256', $query, $secret);
+
+        try {
+            $response = $this->http
+                ->baseUrl($this->baseUrl())
+                ->timeout((int) ($this->config['timeout'] ?? 15))
+                ->withHeaders(['X-BX-APIKEY' => $key])
+                ->delete('/openApi/swap/v2/trade/order?signature='.$signature, $params);
+
+            $payload = (array) $response->json();
+
+            return ($payload['code'] ?? -1) === 0;
+        } catch (Throwable) {
+            return false;
         }
     }
 

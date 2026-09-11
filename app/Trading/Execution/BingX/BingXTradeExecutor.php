@@ -59,21 +59,39 @@ final class BingXTradeExecutor implements TradeExecutorInterface
 
         $side = $signal->direction === Direction::Long ? 'BUY' : 'SELL';
         $positionSide = $signal->direction === Direction::Long ? 'LONG' : 'SHORT';
-        $tpType = (string) ($this->config['tp_order_type'] ?? config('trading.agent.tp_order_type', 'TAKE_PROFIT_MARKET'));
+        $tpType = (string) ($this->config['tp_order_type'] ?? config('trading.agent.tp_order_type', 'TAKE_PROFIT'));
         $tpPrice = $tpType === 'TAKE_PROFIT' ? $signal->target1 : null;
 
-        return $this->send('/openApi/swap/v2/trade/order', [
+        $postOnly = (bool) ($this->config['entry_post_only'] ?? config('trading.agent.entry_post_only', true));
+        $offsetPct = (float) ($this->config['entry_limit_offset_pct'] ?? config('trading.agent.entry_limit_offset_pct', 0.02)) / 100.0;
+
+        $entryPrice = $signal->entryPrice;
+        if ($postOnly && $offsetPct > 0.0) {
+            // Для LONG ставим чуть ниже рынка (в Bid), для SHORT чуть выше рынка (в Ask)
+            $entryPrice = $signal->direction === Direction::Long
+                ? $entryPrice * (1.0 - $offsetPct)
+                : $entryPrice * (1.0 + $offsetPct);
+            $entryPrice = round($entryPrice, $this->priceDecimals($signal->entryPrice));
+        }
+
+        $params = [
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
             'type' => 'LIMIT',
-            'price' => $signal->entryPrice,
+            'price' => $entryPrice,
             'quantity' => $quantity,
             // Server-side protective orders so the position is covered even if
             // the agent process dies between bars.
             'takeProfit' => $this->bracket($tpType, $signal->target1, $tpPrice),
             'stopLoss' => $this->bracket('STOP_MARKET', $signal->stop),
-        ]);
+        ];
+
+        if ($postOnly) {
+            $params['timeInForce'] = 'PostOnly';
+        }
+
+        return $this->send('/openApi/swap/v2/trade/order', $params);
     }
 
     public function closePosition(string $symbol, Direction $direction, int $percent): OrderResult
@@ -336,5 +354,17 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $orderId = $payload['data']['order']['orderId'] ?? $payload['data']['orderId'] ?? null;
 
         return OrderResult::success($orderId === null ? null : (string) $orderId, $payload);
+    }
+
+    private function priceDecimals(float $price): int
+    {
+        if ($price >= 100) {
+            return 2;
+        }
+        if ($price >= 1) {
+            return 4;
+        }
+
+        return 6;
     }
 }

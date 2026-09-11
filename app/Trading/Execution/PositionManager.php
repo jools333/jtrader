@@ -84,7 +84,9 @@ final class PositionManager
         ) {
             $entryOpenTime = $this->currentOpenTime($candles);
             $position = $this->openFromSignal($symbol, $interval, $result->entrySignal, $result->indicators, $level, $entryOpenTime);
-            $this->attachChart($position, $candles);
+            if ($position !== null) {
+                $this->attachChart($position, $candles);
+            }
         }
 
         return $result;
@@ -140,9 +142,15 @@ final class PositionManager
         IndicatorSnapshot $indicators,
         ?float $level = null,
         ?int $entryOpenTime = null,
-    ): Position {
+    ): ?Position {
         $quantity = $this->sizePosition($signal, $symbol);
         $order = $this->executor->openPosition($signal, $symbol, $quantity);
+
+        if (! $order->ok) {
+            Log::warning("[order_rejected] Failed to open position for {$symbol}: {$order->error}");
+
+            return null;
+        }
 
         return Position::create([
             'symbol' => $symbol,
