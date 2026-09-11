@@ -285,7 +285,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
-                ->delete('/openApi/swap/v2/trade/order?signature='.$signature, $params);
+                ->delete('/openApi/swap/v2/trade/order?'.$query.'&signature='.$signature);
         } catch (Throwable) {
             // best-effort
         }
@@ -310,7 +310,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
-                ->delete('/openApi/swap/v2/trade/allOpenOrders?signature='.$signature, $params);
+                ->delete('/openApi/swap/v2/trade/allOpenOrders?'.$query.'&signature='.$signature);
         } catch (Throwable) {
             // best-effort
         }

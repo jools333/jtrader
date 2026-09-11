@@ -356,5 +356,184 @@ class PositionSyncTest extends TestCase
             'status' => Position::STATUS_OPEN,
         ]);
     }
+
+    public function test_sweep_cancels_stale_limit_entry_orders_after_timeout(): void
+    {
+        $pos = Position::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '5m',
+            'direction' => 'LONG',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 130.0,
+            'stop_price' => 125.0,
+            'target1' => 140.0,
+            'target2' => 0.0,
+            'quantity' => 1.5,
+            'size' => 1.0,
+            'entry_order_id' => 'order_limit_123',
+            'opened_at' => now()->subMinutes(10),
+        ]);
+
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response(['code' => 0, 'data' => []]),
+            '*/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'order_limit_123',
+                            'symbol' => 'SOL-USDT',
+                            'side' => 'BUY',
+                            'positionSide' => 'LONG',
+                            'type' => 'LIMIT',
+                            'time' => now()->subMinutes(10)->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 0,
+                'data' => ['order' => ['status' => 'CANCELLED']],
+            ]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response(['code' => 0, 'data' => ['orders' => []]]),
+            '*/openApi/swap/v2/user/income*' => Http::response(['code' => 0, 'data' => []]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync();
+
+        $pos->refresh();
+        $this->assertEquals(Position::STATUS_CLOSED, $pos->status);
+        $this->assertEquals('CANCELED', $pos->exit_type);
+        $this->assertEquals('limit_order_timeout', $pos->exit_reason);
+
+        // Verify DELETE /openApi/swap/v2/trade/order was called
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'orderId=order_limit_123'));
+    }
+
+    public function test_sweep_cancels_orders_on_excluded_symbols_immediately(): void
+    {
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response(['code' => 0, 'data' => []]),
+            '*/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'btc_order_999',
+                            'symbol' => 'BTC-USDT',
+                            'side' => 'BUY',
+                            'positionSide' => 'LONG',
+                            'type' => 'LIMIT',
+                            'time' => now()->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 0,
+                'data' => ['order' => ['status' => 'CANCELLED']],
+            ]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response(['code' => 0, 'data' => ['orders' => []]]),
+            '*/openApi/swap/v2/user/income*' => Http::response(['code' => 0, 'data' => []]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync();
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'orderId=btc_order_999'));
+    }
+
+    public function test_sweep_cancels_orphaned_brackets_without_open_position(): void
+    {
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response(['code' => 0, 'data' => []]),
+            '*/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'tp_orphan_888',
+                            'symbol' => 'DOGE-USDT',
+                            'side' => 'SELL',
+                            'positionSide' => 'LONG',
+                            'type' => 'TAKE_PROFIT',
+                            'time' => now()->subHour()->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 0,
+                'data' => ['order' => ['status' => 'CANCELLED']],
+            ]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response(['code' => 0, 'data' => ['orders' => []]]),
+            '*/openApi/swap/v2/user/income*' => Http::response(['code' => 0, 'data' => []]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync();
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'orderId=tp_orphan_888'));
+    }
+
+    public function test_sweep_preserves_active_brackets_for_open_positions(): void
+    {
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    [
+                        'symbol' => 'ADA-USDT',
+                        'positionSide' => 'LONG',
+                        'positionAmt' => '100.0',
+                        'entryPrice' => '0.50',
+                        'positionId' => 'ada_pos_live',
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'sl_active_777',
+                            'symbol' => 'ADA-USDT',
+                            'side' => 'SELL',
+                            'positionSide' => 'LONG',
+                            'type' => 'STOP_MARKET',
+                            'stopPrice' => '0.48',
+                            'time' => now()->subHour()->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response(['code' => 0, 'data' => ['orders' => []]]),
+            '*/openApi/swap/v2/user/income*' => Http::response(['code' => 0, 'data' => []]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync();
+
+        // Must NOT cancel the active SL order
+        Http::assertNotSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'orderId=sl_active_777'));
+    }
 }
 

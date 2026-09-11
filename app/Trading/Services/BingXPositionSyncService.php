@@ -57,6 +57,9 @@ class BingXPositionSyncService
             }
         }
 
+        // 1b. Sweep stale resting limit entries, orders on excluded symbols, and orphaned brackets
+        $this->sweepStaleAndOrphanedOrders($targetSymbol, $bingxOpenMap, $dryRun, $result);
+
         // 2. Fetch local open positions
         $localOpenPositions = Position::query()
             ->open()
@@ -213,9 +216,13 @@ class BingXPositionSyncService
 
         // 4. Local positions that are marked OPEN, but NO LONGER OPEN on BingX (closed externally)
         foreach ($localOpenMap as $key => $lPos) {
+            $lPos->refresh();
+            if ($lPos->status !== Position::STATUS_OPEN) {
+                continue;
+            }
+
             if (! isset($bingxOpenMap[$key])) {
                 // Check if position was opened as a resting LIMIT order waiting for execution
-                $timeoutMinutes = (int) config('trading.agent.entry_limit_timeout_minutes', 5);
                 $openOrders = $this->fetchOpenOrders($lPos->symbol);
                 $hasPendingEntry = false;
                 foreach ($openOrders as $order) {
@@ -225,26 +232,8 @@ class BingXPositionSyncService
                     }
                 }
                 if ($hasPendingEntry) {
-                    // If order has rested longer than timeout, cancel it!
-                    if ($lPos->opened_at && $lPos->opened_at->isBefore(now()->subMinutes($timeoutMinutes))) {
-                        $this->cancelOrder($lPos->symbol, (string) $lPos->entry_order_id);
-                        if (! $dryRun) {
-                            $lPos->update([
-                                'status' => Position::STATUS_CLOSED,
-                                'exit_price' => $lPos->entry_price,
-                                'realized_pnl' => 0.0,
-                                'commission' => 0.0,
-                                'funding_fee' => 0.0,
-                                'exit_type' => 'CANCELED',
-                                'exit_reason' => 'limit_order_timeout',
-                                'closed_at' => now(),
-                            ]);
-                        }
-                        $result->messages[] = "Cancelled timed-out resting limit entry {$lPos->symbol} (order {$lPos->entry_order_id}) after {$timeoutMinutes}m";
-                    } else {
-                        // Still resting and within timeout: do not prematurely close!
-                        continue;
-                    }
+                    // Still resting within timeout: do not prematurely mark as closed!
+                    continue;
                 }
 
                 // Position was closed on BingX!
@@ -809,18 +798,131 @@ class BingXPositionSyncService
     }
 
     /**
-     * Fetch active open orders for a symbol.
+     * Fetch active open orders for a symbol, or all open orders across the account if symbol is null.
      *
      * @return list<array<string, mixed>>
      */
-    public function fetchOpenOrders(string $symbol): array
+    public function fetchOpenOrders(?string $symbol = null): array
     {
-        $response = $this->get('/openApi/swap/v2/trade/openOrders', ['symbol' => $symbol]);
+        $params = [];
+        if ($symbol !== null) {
+            $params['symbol'] = $symbol;
+        }
+
+        $response = $this->get('/openApi/swap/v2/trade/openOrders', $params);
         if (($response['code'] ?? -1) !== 0) {
             return [];
         }
 
         return (array) ($response['data']['orders'] ?? []);
+    }
+
+    /**
+     * Sweep and cancel stale unfilled entry limit orders (older than timeout),
+     * orders on excluded symbols (e.g. BTC-USDT), and orphaned TP/SL bracket orders
+     * that belong to already-closed positions.
+     *
+     * @param  array<string, array<string, mixed>>  $bingxOpenMap  Active open positions on BingX keyed by "SYMBOL:POSITIONSIDE"
+     */
+    public function sweepStaleAndOrphanedOrders(?string $targetSymbol, array $bingxOpenMap, bool $dryRun, PositionSyncResult $result): void
+    {
+        $openOrders = $this->fetchOpenOrders($targetSymbol);
+        if (empty($openOrders)) {
+            return;
+        }
+
+        $timeoutMinutes = (int) config('trading.agent.entry_limit_timeout_minutes', 5);
+        $excludedSymbols = (array) config('trading.excluded_symbols', []);
+
+        foreach ($openOrders as $order) {
+            $orderId = (string) ($order['orderId'] ?? '');
+            $sym = (string) ($order['symbol'] ?? '');
+            $side = strtoupper((string) ($order['side'] ?? ''));
+            $posSide = strtoupper((string) ($order['positionSide'] ?? ''));
+            $type = strtoupper((string) ($order['type'] ?? ''));
+
+            if ($orderId === '' || $sym === '') {
+                continue;
+            }
+
+            // 1. Excluded symbols (e.g. BTC-USDT): bot should never hold orders on excluded symbols
+            if (in_array($sym, $excludedSymbols, true)) {
+                if (! $dryRun) {
+                    $this->cancelOrder($sym, $orderId);
+                }
+                $result->messages[] = "Cancelled open order {$orderId} on excluded symbol {$sym} ({$type} {$posSide})";
+                continue;
+            }
+
+            $posKey = "{$sym}:{$posSide}";
+            $hasActivePosition = isset($bingxOpenMap[$posKey]);
+
+            $isClosingBracket = in_array($type, ['TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'STOP', 'STOP_MARKET', 'TRIGGER_LIMIT', 'TRIGGER_MARKET'], true)
+                || ($posSide === 'LONG' && $side === 'SELL')
+                || ($posSide === 'SHORT' && $side === 'BUY')
+                || ! empty($order['reduceOnly']);
+
+            // 2. Orphaned TP/SL bracket orders: position is ALREADY closed on BingX, but bracket was left behind
+            if ($isClosingBracket) {
+                if (! $hasActivePosition) {
+                    if (! $dryRun) {
+                        $this->cancelOrder($sym, $orderId);
+                    }
+                    $result->messages[] = "Cancelled orphaned {$type} bracket order {$orderId} on {$sym} {$posSide} (no open position)";
+                }
+                // If has active position: protective bracket safeguarding trade, keep it!
+                continue;
+            }
+
+            // 3. Unfilled Entry Limit Orders
+            $isEntryOrder = (($posSide === 'LONG' && $side === 'BUY') || ($posSide === 'SHORT' && $side === 'SELL'))
+                && in_array($type, ['LIMIT', 'MARKET'], true);
+
+            if ($isEntryOrder && ! $hasActivePosition) {
+                $orderTimeMs = (int) ($order['time'] ?? $order['updateTime'] ?? 0);
+                $ageMs = $orderTimeMs > 0 ? (now()->getTimestampMs() - $orderTimeMs) : 0;
+                $ageMinutes = $ageMs / 60000.0;
+
+                if ($ageMinutes >= $timeoutMinutes) {
+                    if (! $dryRun) {
+                        $this->cancelOrder($sym, $orderId);
+
+                        // If there is an associated local Position record marked OPEN, cancel it
+                        $lPos = Position::query()
+                            ->open()
+                            ->where('symbol', $sym)
+                            ->where(function ($q) use ($orderId, $posSide) {
+                                $q->where('entry_order_id', $orderId)
+                                    ->orWhere('direction', $posSide);
+                            })
+                            ->latest('opened_at')
+                            ->first();
+
+                        if ($lPos !== null) {
+                            $lPos->update([
+                                'status' => Position::STATUS_CLOSED,
+                                'exit_price' => $lPos->entry_price,
+                                'realized_pnl' => 0.0,
+                                'commission' => 0.0,
+                                'funding_fee' => 0.0,
+                                'exit_type' => 'CANCELED',
+                                'exit_reason' => 'limit_order_timeout',
+                                'closed_at' => now(),
+                            ]);
+                        }
+                    }
+
+                    $result->messages[] = sprintf(
+                        'Cancelled timed-out entry limit order %s on %s %s (age: %.1f min, timeout: %d min)',
+                        $orderId,
+                        $sym,
+                        $posSide,
+                        $ageMinutes,
+                        $timeoutMinutes
+                    );
+                }
+            }
+        }
     }
 
     /**
@@ -898,7 +1000,7 @@ class BingXPositionSyncService
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
-                ->delete('/openApi/swap/v2/trade/order?signature='.$signature, $params);
+                ->delete('/openApi/swap/v2/trade/order?'.$query.'&signature='.$signature);
 
             $payload = (array) $response->json();
 
