@@ -62,7 +62,8 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $tpType = (string) ($this->config['tp_order_type'] ?? config('trading.agent.tp_order_type', 'TAKE_PROFIT'));
         $tpPrice = $tpType === 'TAKE_PROFIT' ? $signal->target1 : null;
 
-        $postOnly = (bool) ($this->config['entry_post_only'] ?? config('trading.agent.entry_post_only', true));
+        $entryType = strtoupper((string) ($this->config['entry_order_type'] ?? config('trading.agent.entry_order_type', 'LIMIT')));
+        $postOnly = (bool) ($this->config['entry_post_only'] ?? config('trading.agent.entry_post_only', false));
         $offsetPct = (float) ($this->config['entry_limit_offset_pct'] ?? config('trading.agent.entry_limit_offset_pct', 0.02)) / 100.0;
 
         $entryPrice = $signal->entryPrice;
@@ -78,8 +79,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
-            'type' => 'LIMIT',
-            'price' => $entryPrice,
+            'type' => $entryType,
             'quantity' => $quantity,
             // Server-side protective orders so the position is covered even if
             // the agent process dies between bars.
@@ -87,8 +87,11 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             'stopLoss' => $this->bracket('STOP_MARKET', $signal->stop),
         ];
 
-        if ($postOnly) {
-            $params['timeInForce'] = 'PostOnly';
+        if ($entryType === 'LIMIT') {
+            $params['price'] = $entryPrice;
+            if ($postOnly) {
+                $params['timeInForce'] = 'PostOnly';
+            }
         }
 
         return $this->send('/openApi/swap/v2/trade/order', $params);

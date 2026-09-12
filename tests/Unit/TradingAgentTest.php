@@ -247,6 +247,31 @@ class TradingAgentTest extends TestCase
         $this->assertNotNull($exit->reason);
     }
 
+    public function test_early_reversal_disabled_when_flag_is_false(): void
+    {
+        $atr = 8.0;
+        $candles = $this->baseline(45, 90, 100);
+        $candles[] = $this->candle(99.8, 100.6, 99.0, 99.2);
+        $candles[] = $this->candle(99.2, 99.8, 98.4, 98.6);
+        $candles[] = $this->candle(98.6, 98.8, 91.5, 92.0);
+
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 80.0,
+            stopPrice: 70.0,
+            target1: 200.0,
+            target2: 300.0,
+            openedAt: Carbon::now()->subMinutes(10),
+        );
+
+        $agent = new TradingAgent([
+            'early_reversal_enabled' => false,
+        ]);
+
+        $exit = $agent->evaluate($candles, 95.0, $atr, $position)->exitSignal;
+        $this->assertNull($exit);
+    }
+
     public function test_early_reversal_suppressed_when_position_opened_recently(): void
     {
         $atr = 8.0;

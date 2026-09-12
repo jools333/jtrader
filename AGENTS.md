@@ -191,8 +191,16 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *Incident & Root Cause Analysis*:
     1. **Dual-Instance Race Condition**: The local dev container was running live `scheduler` and `ws` with `TRADING_EXECUTOR=bingx` concurrently with the remote server. Both bots were opening orders, canceling each other's SL/TP brackets via `cancelAllOrders`, and re-importing the other's positions as `EXTERNAL`. Local container stopped and forced to `TRADING_EXECUTOR=paper`.
     2. **Zero Target2 Bug on LONGs**: `BingXPositionSyncService` imported external positions with `'target2' => 0.0`. `Target2Strategy` had no `target2 > 0` check, evaluating `$price >= 0.0` as `true` on LONGs and instantly market-closing them within 60 seconds (costing -$61.01 in pure churn fees). Fixed with strict `target <= 0.0` guards in `Target1Strategy` and `Target2Strategy`.
-- **2026-09-10 (In Progress, 05:30 MSK)**:
-  - *Total Trades*: 9 trades, **4/9 wins (44.4% Win Rate)**, Realized: -$32.77, Fees: -$37.75, **Net PnL: -$70.52**.
-  - *Evening Wins with Dynamic Protection*: SOL SHORT: +$9.61 (TP1), LINK SHORT: +$14.25 (TP1), XRP SHORT: +$5.58 (Market), XRP SHORT: +$0.48 (TP1). Break-even moved stop on LINK SHORT to -$0.33 net.
-  - *Account Balance / Equity*: **90,681.58 VST**.
+- **2026-09-10**:
+  - *Total Trades*: 15 trades, **5/15 wins (33.3% Win Rate)**, Realized: -$125.43, Fees: -$54.00, **Net PnL: -$179.42** (LONG: -$83.74, SHORT: -$95.68).
+  - *Early Reversal Impact*: Catastrophic panic exits by EarlyReversal (`btc_reversal` / `ema_turn`) locked in -$118 net losses (LINK: -$39.23, LINK: -$42.40, XRP: -$36.43).
+- **2026-09-11**:
+  - *Total Trades*: 11 trades, **6/11 wins (54.5% Win Rate)**, Realized: -$3.21, Fees: -$39.78, **Net PnL: -$42.99** (LONG: -$38.52, SHORT: -$4.47).
+  - *Afternoon Win Streak*: 3 consecutive TP1 hits (ADA: +$8.19, SOL: +$13.54, XRP: +$18.89).
+  - *Issues*: Two massive EarlyReversal losses (BNB: -$45.74, ADA: -$37.09) wiped out all 6 wins due to inverted 1:2.5 R:R in quick mode; evening deployment of Maker PostOnly caused 24 rejected orders.
+- **2026-09-12 (Morning, 11:00 MSK)**:
+  - *Total Trades*: 4 trades, **0/4 wins (0.0% Win Rate)**, Realized: -$22.01, Fees: -$4.76, **Net PnL: -$26.77**.
+  - *Maker PostOnly Adverse Selection*: 2 limit orders timed out and cancelled (LINK, XRP); the only 2 filled orders were adverse moves hitting SL (DOGE: -$13.40, ETH: -$13.37); 24 potential entries rejected by BingX.
+  - *Account Balance / Equity*: **90,502.92 VST**.
+  - *Remediation*: Disabled `entry_post_only` to restore reliable execution; disabled `early_reversal_enabled` to eliminate premature panic closes; rebalanced R:R to $\ge 1.5R$; tuned Break-Even to 0.40%/0.08% buffer; resolved BTC HTF trend deadlock.
 

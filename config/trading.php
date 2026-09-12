@@ -82,9 +82,10 @@ return [
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
         'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
-        'target1_r' => 2.0,       // target 1 at 2R (used in 'rr' mode)
-        'target2_r' => 4.0,       // target 2 at 4R
-        'tp_mode' => env('TRADING_TP_MODE', 'quick'), // 'quick' (скальп-тейк) или 'rr' (соотношение R:R)
+        'target1_r' => (float) env('TRADING_TARGET1_R', 1.5),       // target 1 at 1.5R (used in 'rr' mode)
+        'target2_r' => (float) env('TRADING_TARGET2_R', 3.0),       // target 2 at 3R
+        'tp_mode' => env('TRADING_TP_MODE', 'rr'), // 'rr' (соотношение R:R) или 'quick' (скальп-тейк)
+        'quick_min_r' => (float) env('TRADING_QUICK_MIN_R', 1.0), // минимальный R:R для quick режима
 
         // BTC Anchor (межрыночный фильтр)
         'btc_filter_enabled' => (bool) env('TRADING_BTC_FILTER_ENABLED', true),
@@ -92,8 +93,9 @@ return [
         'btc_htf_interval' => env('TRADING_BTC_HTF_INTERVAL', '1h'), // таймфрейм для анализа старшего тренда BTC (1h)
         'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.20), // макс допустимый дамп BTC за 3 свечи для входа в LONG
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.20), // макс допустимый памп BTC за 3 свечи для входа в SHORT
-        'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.35), // импульсный дамп BTC для опережающего выхода из LONG
-        'btc_fast_exit_pump_percent' => (float) env('TRADING_BTC_FAST_EXIT_PUMP_PCT', 0.35), // импульсный памп BTC для опережающего выхода из SHORT
+        'early_reversal_enabled' => (bool) env('TRADING_EARLY_REVERSAL_ENABLED', false), // досрочный выход по развороту (отключен для предотвращения панических сливов)
+        'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.80), // импульсный дамп BTC для опережающего выхода из LONG
+        'btc_fast_exit_pump_percent' => (float) env('TRADING_BTC_FAST_EXIT_PUMP_PCT', 0.80), // импульсный памп BTC для опережающего выхода из SHORT
         'min_hold_seconds' => (int) env('TRADING_MIN_HOLD_SECONDS', 180), // минимальное время удержания позиции (сек) перед досрочным выходом по рынку
 
         // Настройки BounceStrategy
@@ -106,12 +108,13 @@ return [
         'bounce_volume_multiplier' => (float) env('TRADING_BOUNCE_VOLUME_MULT', 1.15), // Мин. всплеск объема на триггерной свече отскока
         'bounce_climax_volume_mult' => (float) env('TRADING_BOUNCE_CLIMAX_MULT', 2.20), // Порог кульминации пробоя (падающий нож)
         
-        // Настройки тейк-профита, комиссий и защитного стопа
-        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT'), // TAKE_PROFIT (Maker 0.02%) или TAKE_PROFIT_MARKET (Taker 0.05%)
-        'entry_post_only' => (bool) env('TRADING_ENTRY_POST_ONLY', true), // вход выставляется как Maker (Post-Only, 0.02%)
+        // Настройки ордеров входа, тейк-профита, комиссий и защитного стопа
+        'entry_order_type' => env('TRADING_ENTRY_ORDER_TYPE', 'LIMIT'), // LIMIT или MARKET
+        'entry_post_only' => (bool) env('TRADING_ENTRY_POST_ONLY', false), // вход как Post-Only (false предотвращает реджекты и adverse selection)
         'entry_limit_offset_pct' => (float) env('TRADING_ENTRY_LIMIT_OFFSET_PCT', 0.02), // отступ цены входа для гарантированной постановки в стакан (%)
         'entry_limit_timeout_minutes' => (int) env('TRADING_ENTRY_LIMIT_TIMEOUT_MINUTES', 5), // тайм-аут отмены неисполненного ордера входа (мин)
-        'tp_percent' => (float) env('TRADING_TP_PCT', 0.35),             // Чистый профит Target 1 (50% объема) в процентах от цены
+        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT'), // TAKE_PROFIT (Maker 0.02%) или TAKE_PROFIT_MARKET (Taker 0.05%)
+        'tp_percent' => (float) env('TRADING_TP_PCT', 0.60),             // Профит Target 1 в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
         'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.2), // Жесткий максимальный порог стоп-лосса (% от цены входа)
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
@@ -120,11 +123,11 @@ return [
 
         // Настройки автоматического безубытка (Break-Even) и трейлинг-стопа
         'break_even_enabled' => (bool) env('TRADING_BE_ENABLED', true),
-        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.25), // порог активации безубытка (+0.25% прибыли)
-        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.11),   // буфер комиссии (+0.11% от точки входа для гарантии чистой прибыли)
+        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.40), // порог активации безубытка (+0.40% прибыли)
+        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.08),   // буфер комиссии (+0.08% от точки входа для гарантии чистой прибыли)
         'trailing_stop_enabled' => (bool) env('TRADING_TRAILING_ENABLED', true),
-        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.40), // порог активации трейлинга (+0.40% прибыли)
-        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.20), // отступ трейлинга от пика (0.20%)
+        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.60), // порог активации трейлинга (+0.60% прибыли)
+        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.25), // отступ трейлинга от пика (0.25%)
         'protection_min_shift_pct' => (float) env('TRADING_PROTECTION_MIN_SHIFT_PCT', 0.03), // мин. сдвиг для вызова moveStop (0.03%)
 
         // Настройки BtcLeadLagStrategy (опережающе-запаздывающий арбитраж за BTC)

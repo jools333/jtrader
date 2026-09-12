@@ -124,4 +124,33 @@ class EntryGuardTest extends TestCase
         // SHORT must be BLOCKED!
         $this->assertFalse($guard->allows($ctx, Direction::Short, SignalType::Bounce));
     }
+
+    public function test_htf_regimes_are_mutually_exclusive_preventing_deadlock(): void
+    {
+        $guard = new EntryGuard([
+            'btc_filter_enabled' => true,
+            'btc_htf_filter_enabled' => true,
+        ]);
+
+        // 5m BTC is stable
+        $btc5m = [$this->candle(80000), $this->candle(80050), $this->candle(80100)];
+        // 1h BTC is 80100 (above EMA50 79000), but EMA8 (79400) is below EMA21 (79500)
+        $btcHtf = [$this->candle(80000), $this->candle(80050), $this->candle(80100)];
+
+        $ctx = $this->createContext(
+            btcCandles: $btc5m,
+            btcHtfCandles: $btcHtf,
+            btcHtfEma8: [79600.0, 79500.0, 79400.0],
+            btcHtfEma21: [79500.0, 79500.0, 79500.0], // EMA8 < EMA21
+            btcHtfEma50: [79000.0, 79000.0, 79000.0], // Price 80100 > EMA50 79000
+        );
+
+        // Bullish macro regime: price > EMA50
+        $this->assertTrue($ctx->btcHtfTrendBullish());
+        // Must NOT also be Bearish!
+        $this->assertFalse($ctx->btcHtfTrendBearish());
+
+        // LONG is allowed (not deadlocked)
+        $this->assertTrue($guard->allows($ctx, Direction::Long, SignalType::Bounce));
+    }
 }

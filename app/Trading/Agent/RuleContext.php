@@ -349,7 +349,7 @@ final class RuleContext
 
     /**
      * Whether BTC on higher timeframe is in a clear bearish regime:
-     * price below EMA50 or EMA8 < EMA21.
+     * price below EMA50 (or EMA8 < EMA21 when EMA50 unavailable).
      */
     public function btcHtfTrendBearish(): bool
     {
@@ -362,12 +362,12 @@ final class RuleContext
             return false;
         }
 
-        if ($ema50 !== null && $price < $ema50) {
-            return true;
+        if ($ema50 !== null) {
+            return $price < $ema50;
         }
 
-        if ($ema8 !== null && $ema21 !== null && $ema8 < $ema21) {
-            return true;
+        if ($ema8 !== null && $ema21 !== null) {
+            return $ema8 < $ema21;
         }
 
         return false;
@@ -375,7 +375,7 @@ final class RuleContext
 
     /**
      * Whether BTC on higher timeframe is in a clear bullish regime:
-     * price above EMA50 or EMA8 > EMA21.
+     * price above EMA50 (or EMA8 > EMA21 when EMA50 unavailable).
      */
     public function btcHtfTrendBullish(): bool
     {
@@ -388,12 +388,12 @@ final class RuleContext
             return false;
         }
 
-        if ($ema50 !== null && $price > $ema50) {
-            return true;
+        if ($ema50 !== null) {
+            return $price > $ema50;
         }
 
-        if ($ema8 !== null && $ema21 !== null && $ema8 > $ema21) {
-            return true;
+        if ($ema8 !== null && $ema21 !== null) {
+            return $ema8 > $ema21;
         }
 
         return false;

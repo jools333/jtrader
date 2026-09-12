@@ -34,6 +34,12 @@ final class EarlyReversalStrategy implements ExitStrategyInterface
      */
     public function evaluate(RuleContext $ctx, PositionState $position): ?ExitSignal
     {
+        // Проверка: включен ли досрочный выход в конфигурации
+        $enabled = (bool) ($this->config['early_reversal_enabled'] ?? true);
+        if (! $enabled) {
+            return null;
+        }
+
         // Защита от раннего закрытия по рынку: даем сделке время на развитие (по умолчанию 180 сек)
         $minHoldSeconds = (int) ($this->config['min_hold_seconds'] ?? 180);
         if ($position->openedAt !== null && $minHoldSeconds > 0) {
@@ -175,8 +181,8 @@ final class EarlyReversalStrategy implements ExitStrategyInterface
             return false;
         }
 
-        $fastExitDump = (float) ($this->config['btc_fast_exit_dump_percent'] ?? 0.35);
-        $fastExitPump = (float) ($this->config['btc_fast_exit_pump_percent'] ?? 0.35);
+        $fastExitDump = (float) ($this->config['btc_fast_exit_dump_percent'] ?? 0.80);
+        $fastExitPump = (float) ($this->config['btc_fast_exit_pump_percent'] ?? 0.80);
 
         // Импульсное изменение цены BTC за последние 2 свечи
         $btcRet2 = $ctx->btcReturnPct(2);

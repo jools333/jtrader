@@ -77,13 +77,11 @@ final class TradePlanner
         $minStopDistance = $entry * 0.001;
         $stopDistance = max($stopDistance, $minStopDistance);
 
-        // Дистанция тейк-профита:
-        // В режиме 'quick' Target 1 ставится строго на minTpDistance (скальпинг),
-        // в режиме 'rr' - с учетом целевого R:R (target1_r, по умолчанию 2.0R)
         $tpMode = (string) ($this->config['tp_mode'] ?? 'quick');
-        $target1R = (float) $this->cfg('target1_r', 2.0);
+        $target1R = (float) $this->cfg('target1_r', 1.5);
         if ($tpMode === 'quick') {
-            $tpDistance = $minTpDistance;
+            $quickMinR = (float) $this->cfg('quick_min_r', 0.0);
+            $tpDistance = $quickMinR > 0.0 ? max($minTpDistance, $stopDistance * $quickMinR) : $minTpDistance;
         } else {
             $tpDistance = max($minTpDistance, $stopDistance * $target1R);
         }

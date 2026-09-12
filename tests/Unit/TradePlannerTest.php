@@ -91,4 +91,42 @@ class TradePlannerTest extends TestCase
         // Capped at 100 * 1.012 = 101.2
         $this->assertEqualsWithDelta(101.2, $signal->stop, 0.001);
     }
+
+    public function test_rr_mode_targets_at_least_1_point_5_r(): void
+    {
+        $planner = new TradePlanner([
+            'tp_mode' => 'rr',
+            'target1_r' => 1.5,
+        ]);
+
+        $ctx = $this->context(100.0, 1.0);
+        // Technical stop at 99.2 (0.8 distance)
+        $signal = $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: 99.2);
+
+        $this->assertNotNull($signal);
+        $stopDist = 100.0 - $signal->stop; // 0.8
+        $tpDist = $signal->target1 - 100.0; // 0.8 * 1.5 = 1.2 -> target1 = 101.2
+        $this->assertEqualsWithDelta(0.8, $stopDist, 0.001);
+        $this->assertEqualsWithDelta(1.2, $tpDist, 0.001);
+        $this->assertEqualsWithDelta(101.2, $signal->target1, 0.001);
+    }
+
+    public function test_quick_mode_respects_quick_min_r(): void
+    {
+        $planner = new TradePlanner([
+            'tp_mode' => 'quick',
+            'tp_percent' => 0.35,
+            'quick_min_r' => 1.0,
+        ]);
+
+        $ctx = $this->context(100.0, 1.0);
+        // Technical stop at 99.0 (1.0 distance)
+        $signal = $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: 99.0);
+
+        $this->assertNotNull($signal);
+        $stopDist = 100.0 - $signal->stop; // 1.0
+        $tpDist = $signal->target1 - 100.0;
+        // Even though tp_percent is 0.35%, quick_min_r enforces tpDist >= 1.0 * stopDist = 1.0
+        $this->assertGreaterThanOrEqual(1.0, $tpDist);
+    }
 }
