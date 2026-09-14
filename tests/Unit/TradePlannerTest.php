@@ -129,4 +129,40 @@ class TradePlannerTest extends TestCase
         // Even though tp_percent is 0.35%, quick_min_r enforces tpDist >= 1.0 * stopDist = 1.0
         $this->assertGreaterThanOrEqual(1.0, $tpDist);
     }
+
+    public function test_market_entry_accounts_for_taker_fee_in_min_tp(): void
+    {
+        $planner = new TradePlanner([
+            'entry_order_type' => 'MARKET',
+            'tp_mode' => 'quick',
+            'tp_percent' => 0.35,
+            'fee_maker_percent' => 0.02,
+            'fee_taker_percent' => 0.05,
+        ]);
+
+        $ctx = $this->context(100.0, 0.1);
+        $signal = $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: 99.9);
+
+        $this->assertNotNull($signal);
+        // Entry: 100.0, tp_percent: 0.35%, total fee (taker + taker): 0.10% -> minTp = 0.45% -> 100.45
+        $this->assertEqualsWithDelta(100.45, $signal->target1, 0.001);
+    }
+
+    public function test_limit_entry_accounts_for_maker_fee_in_min_tp(): void
+    {
+        $planner = new TradePlanner([
+            'entry_order_type' => 'LIMIT',
+            'tp_mode' => 'quick',
+            'tp_percent' => 0.35,
+            'fee_maker_percent' => 0.02,
+            'fee_taker_percent' => 0.05,
+        ]);
+
+        $ctx = $this->context(100.0, 0.1);
+        $signal = $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: 99.9);
+
+        $this->assertNotNull($signal);
+        // Entry: 100.0, tp_percent: 0.35%, total fee (maker + taker): 0.07% -> minTp = 0.42% -> 100.42
+        $this->assertEqualsWithDelta(100.42, $signal->target1, 0.001);
+    }
 }

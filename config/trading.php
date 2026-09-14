@@ -109,7 +109,7 @@ return [
         'bounce_climax_volume_mult' => (float) env('TRADING_BOUNCE_CLIMAX_MULT', 2.20), // Порог кульминации пробоя (падающий нож)
         
         // Настройки ордеров входа, тейк-профита, комиссий и защитного стопа
-        'entry_order_type' => env('TRADING_ENTRY_ORDER_TYPE', 'LIMIT'), // LIMIT или MARKET
+        'entry_order_type' => env('TRADING_ENTRY_ORDER_TYPE', 'MARKET'), // MARKET или LIMIT
         'entry_post_only' => (bool) env('TRADING_ENTRY_POST_ONLY', false), // вход как Post-Only (false предотвращает реджекты и adverse selection)
         'entry_limit_offset_pct' => (float) env('TRADING_ENTRY_LIMIT_OFFSET_PCT', 0.02), // отступ цены входа для гарантированной постановки в стакан (%)
         'entry_limit_timeout_minutes' => (int) env('TRADING_ENTRY_LIMIT_TIMEOUT_MINUTES', 5), // тайм-аут отмены неисполненного ордера входа (мин)

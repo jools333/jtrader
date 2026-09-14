@@ -47,10 +47,12 @@ final class TradePlanner
             : $this->cfg('tp_percent', 0.35) / 100.0;
         $tpMultiplier = $this->cfg('tp_multiplier', 2.0);
         
-        // Учитываем комиссии BingX. Вход LIMIT (Maker), выход TP - MARKET (Taker)
+        // Учитываем комиссии BingX в зависимости от типа входа (MARKET = Taker, LIMIT = Maker). Выход TP - MARKET (Taker)
+        $entryOrderType = strtoupper((string) ($this->config['entry_order_type'] ?? 'LIMIT'));
         $makerFee = $this->cfg('fee_maker_percent', 0.02) / 100.0;
         $takerFee = $this->cfg('fee_taker_percent', 0.05) / 100.0;
-        $totalFeePercent = $takerFee + $makerFee; // 0.07%
+        $entryFee = $entryOrderType === 'MARKET' ? $takerFee : $makerFee;
+        $totalFeePercent = $takerFee + $entryFee;
         
         // Минимальная дистанция тейка для надежного покрытия комиссий и получения прибыли
         $minTpDistance = $entry * ($tpPercent + $totalFeePercent);
