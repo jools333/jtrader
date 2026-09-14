@@ -78,12 +78,12 @@ return [
         'symbol_min_entry_score' => [
             'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 80.0),
         ],
-        'min_rr' => (float) env('TRADING_MIN_RR', 0.5),          // reject entries with reward:risk below this
+        'min_rr' => (float) env('TRADING_MIN_RR', 1.5),          // reject entries with reward:risk below this
         'max_atr_travel' => 0.60, // skip if price ran > 60% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
         'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
-        'target1_r' => (float) env('TRADING_TARGET1_R', 1.5),       // target 1 at 1.5R (used in 'rr' mode)
-        'target2_r' => (float) env('TRADING_TARGET2_R', 3.0),       // target 2 at 3R
+        'target1_r' => (float) env('TRADING_TARGET1_R', 2.0),       // target 1 at 2.0R (used in 'rr' mode)
+        'target2_r' => (float) env('TRADING_TARGET2_R', 4.0),       // target 2 at 4.0R
         'tp_mode' => env('TRADING_TP_MODE', 'rr'), // 'rr' (соотношение R:R) или 'quick' (скальп-тейк)
         'quick_min_r' => (float) env('TRADING_QUICK_MIN_R', 1.0), // минимальный R:R для quick режима
 
@@ -113,7 +113,7 @@ return [
         'entry_post_only' => (bool) env('TRADING_ENTRY_POST_ONLY', false), // вход как Post-Only (false предотвращает реджекты и adverse selection)
         'entry_limit_offset_pct' => (float) env('TRADING_ENTRY_LIMIT_OFFSET_PCT', 0.02), // отступ цены входа для гарантированной постановки в стакан (%)
         'entry_limit_timeout_minutes' => (int) env('TRADING_ENTRY_LIMIT_TIMEOUT_MINUTES', 5), // тайм-аут отмены неисполненного ордера входа (мин)
-        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT'), // TAKE_PROFIT (Maker 0.02%) или TAKE_PROFIT_MARKET (Taker 0.05%)
+        'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker 0.05%) или TAKE_PROFIT (Maker 0.02%)
         'tp_percent' => (float) env('TRADING_TP_PCT', 0.60),             // Профит Target 1 в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
         'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.2), // Жесткий максимальный порог стоп-лосса (% от цены входа)
@@ -123,11 +123,11 @@ return [
 
         // Настройки автоматического безубытка (Break-Even) и трейлинг-стопа
         'break_even_enabled' => (bool) env('TRADING_BE_ENABLED', true),
-        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.40), // порог активации безубытка (+0.40% прибыли)
-        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.08),   // буфер комиссии (+0.08% от точки входа для гарантии чистой прибыли)
+        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.60), // порог активации безубытка (+0.60% прибыли)
+        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.10),   // буфер комиссии (+0.10% от точки входа для гарантии чистой прибыли)
         'trailing_stop_enabled' => (bool) env('TRADING_TRAILING_ENABLED', true),
-        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.60), // порог активации трейлинга (+0.60% прибыли)
-        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.25), // отступ трейлинга от пика (0.25%)
+        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.80), // порог активации трейлинга (+0.80% прибыли)
+        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.35), // отступ трейлинга от пика (0.35%)
         'protection_min_shift_pct' => (float) env('TRADING_PROTECTION_MIN_SHIFT_PCT', 0.03), // мин. сдвиг для вызова moveStop (0.03%)
 
         // Настройки BtcLeadLagStrategy (опережающе-запаздывающий арбитраж за BTC)

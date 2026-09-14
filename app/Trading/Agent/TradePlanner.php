@@ -80,7 +80,7 @@ final class TradePlanner
         $stopDistance = max($stopDistance, $minStopDistance);
 
         $tpMode = (string) ($this->config['tp_mode'] ?? 'quick');
-        $target1R = (float) $this->cfg('target1_r', 1.5);
+        $target1R = (float) $this->cfg('target1_r', 2.0);
         if ($tpMode === 'quick') {
             $quickMinR = (float) $this->cfg('quick_min_r', 0.0);
             $tpDistance = $quickMinR > 0.0 ? max($minTpDistance, $stopDistance * $quickMinR) : $minTpDistance;
