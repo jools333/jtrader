@@ -41,9 +41,9 @@ return [
     // Hard cap: maximum number of concurrent open positions across all symbols (0 = disabled).
     'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 3),
     // Minimum cooldown in minutes between positions on the same symbol (0 = disabled).
-    'entry_cooldown_minutes' => (int) env('TRADING_ENTRY_COOLDOWN_MINUTES', 30),
+    'entry_cooldown_minutes' => (int) env('TRADING_ENTRY_COOLDOWN_MINUTES', 45),
     // Extended cooldown in minutes after a Stop Loss exit on the same symbol (0 = use entry_cooldown_minutes).
-    'stop_loss_cooldown_minutes' => (int) env('TRADING_STOP_LOSS_COOLDOWN_MINUTES', 60),
+    'stop_loss_cooldown_minutes' => (int) env('TRADING_STOP_LOSS_COOLDOWN_MINUTES', 90),
     // Daily loss circuit breaker in USDT (0 = disabled).
     // If net closed PnL for the current calendar day reaches -X USDT, pause opening new positions.
     'daily_loss_limit' => (float) env('TRADING_DAILY_LOSS_LIMIT', 150.0),
@@ -74,7 +74,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'agent' => [
-        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 75.0),
+        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 80.0),
         'symbol_min_entry_score' => [
             'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 80.0),
         ],
