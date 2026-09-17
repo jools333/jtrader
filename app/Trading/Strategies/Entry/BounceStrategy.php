@@ -253,10 +253,28 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слабый объем на отскоке (нет подтверждения покупателей)';
         }
 
+        // 9. Запрет на вход "вдогонку" (Hard filter)
+        $triggerBullBody = max(0.0, $last->close - $last->open);
+        $passedNoChasing = $triggerBullBody < $atr * 0.60;
+
+        $criteria['no_chasing'] = new CriterionResult(
+            key: 'no_chasing',
+            name: 'Вход без погони за ценой',
+            passed: $passedNoChasing,
+            expected: sprintf('Тело свечи входа < %.4f (0.6 ATR)', $atr * 0.60),
+            actual: sprintf('Тело = %.4f', $triggerBullBody),
+            actualValue: $triggerBullBody,
+            thresholdValue: $atr * 0.60,
+        );
+        if (! $passedNoChasing) {
+            $missing[] = 'Слишком большая сигнальная свеча (вход вдогонку)';
+        }
+
         // Hard filters: 100% strictly mandatory for entry (critical risk safeguards)
         $hardFilters = [
             'normal_atr' => $passedNormalAtr,
             'no_climax' => $passedNoClimax,
+            'no_chasing' => $passedNoChasing,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
@@ -464,10 +482,28 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слабый объем на отскоке (нет подтверждения продавцов)';
         }
 
+        // 9. Запрет на вход "вдогонку" (Hard filter)
+        $triggerBearBody = max(0.0, $last->open - $last->close);
+        $passedNoChasing = $triggerBearBody < $atr * 0.60;
+
+        $criteria['no_chasing'] = new CriterionResult(
+            key: 'no_chasing',
+            name: 'Вход без погони за ценой',
+            passed: $passedNoChasing,
+            expected: sprintf('Тело свечи входа < %.4f (0.6 ATR)', $atr * 0.60),
+            actual: sprintf('Тело = %.4f', $triggerBearBody),
+            actualValue: $triggerBearBody,
+            thresholdValue: $atr * 0.60,
+        );
+        if (! $passedNoChasing) {
+            $missing[] = 'Слишком большая сигнальная свеча (вход вдогонку)';
+        }
+
         // Hard filters: 100% strictly mandatory for entry (critical risk safeguards)
         $hardFilters = [
             'normal_atr' => $passedNormalAtr,
             'no_climax' => $passedNoClimax,
+            'no_chasing' => $passedNoChasing,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 

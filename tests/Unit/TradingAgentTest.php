@@ -102,7 +102,7 @@ class TradingAgentTest extends TestCase
         $candles[] = $this->candle(97.0, 99.8, 96.8, 99.5);
         $candles[] = $this->candle(99.5, 100.5, 99.0, 99.8);
         // Trigger candle rejecting level
-        $candles[] = $this->candle(99.8, 100.5, 94.5, 95.0, 2000.0);
+        $candles[] = $this->candle(99.8, 100.5, 94.5, 95.5, 2000.0);
 
         $result = $this->agent()->evaluate($candles, $level, $atr);
 

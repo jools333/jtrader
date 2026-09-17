@@ -102,6 +102,9 @@ return [
         'btc_htf_interval' => env('TRADING_BTC_HTF_INTERVAL', '1h'), // таймфрейм для анализа старшего тренда BTC (1h)
         'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.20), // макс допустимый дамп BTC за 3 свечи для входа в LONG
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.20), // макс допустимый памп BTC за 3 свечи для входа в SHORT
+        'btc_storm_filter_enabled' => (bool) env('TRADING_BTC_STORM_FILTER_ENABLED', true), // блокировка входов при высокой абсолютной волатильности BTC
+        'btc_storm_threshold_pct' => (float) env('TRADING_BTC_STORM_THRESHOLD_PCT', 0.80), // порог ширины (спреда) BTC для определения "шторма"
+        'btc_storm_lookback' => (int) env('TRADING_BTC_STORM_LOOKBACK_CANDLES', 15), // количество последних свечей для измерения шторма
         'early_reversal_enabled' => (bool) env('TRADING_EARLY_REVERSAL_ENABLED', false), // досрочный выход по развороту (отключен для предотвращения панических сливов)
         'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.80), // импульсный дамп BTC для опережающего выхода из LONG
         'btc_fast_exit_pump_percent' => (float) env('TRADING_BTC_FAST_EXIT_PUMP_PCT', 0.80), // импульсный памп BTC для опережающего выхода из SHORT
@@ -110,7 +113,7 @@ return [
         // Настройки BounceStrategy
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
         'bounce_level_approach_atr' => (float) env('TRADING_BOUNCE_LEVEL_APPROACH_ATR', 0.75), // Допустимая зона от уровня для теста (в ATR)
-        'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.85), // Допустимая зона для точки входа с учетом отскока (в ATR)
+        'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.50), // Допустимая зона для точки входа с учетом отскока (в ATR)
         'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)

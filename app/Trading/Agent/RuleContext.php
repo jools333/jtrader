@@ -231,6 +231,31 @@ final class RuleContext
         return (($lastClose - $prevClose) / $prevClose) * 100.0;
     }
 
+    /** Spread (MaxHigh vs MinLow) of BTC over the last `k` candles in percent. */
+    public function btcRecentWidthPct(int $k): ?float
+    {
+        if (! $this->hasBtcData()) {
+            return null;
+        }
+
+        $slice = array_slice($this->btcCandles, -$k);
+        if (empty($slice)) {
+            return null;
+        }
+        
+        $highs = array_map(static fn (Candle $c) => $c->high, $slice);
+        $lows = array_map(static fn (Candle $c) => $c->low, $slice);
+
+        $maxHigh = max($highs) ?: 0.0;
+        $minLow = min($lows) ?: 0.0;
+
+        if ($minLow <= 0.0) {
+            return 0.0;
+        }
+
+        return (($maxHigh - $minLow) / $minLow) * 100.0;
+    }
+
     public function btcEma8Falling(): ?bool
     {
         if (empty($this->btcEma8) || count($this->btcEma8) < 2) {

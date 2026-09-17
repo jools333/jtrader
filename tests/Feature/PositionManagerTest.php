@@ -43,7 +43,7 @@ class PositionManagerTest extends TestCase
         $candles[] = $this->candle(97.0, 99.8, 96.8, 99.5);
         $candles[] = $this->candle(99.5, 100.5, 99.0, 99.8);
         // Trigger candle rejecting level
-        $candles[] = $this->candle(99.8, 100.5, 94.5, 95.0, 2000.0);
+        $candles[] = $this->candle(99.8, 100.5, 94.5, 95.5, 2000.0);
 
         return $candles;
     }
@@ -548,6 +548,8 @@ class PositionManagerTest extends TestCase
 
     public function test_daily_loss_limit_rolling_lockout_blocks_entries(): void
     {
+        \Carbon\Carbon::setTestNow('2026-09-17 12:00:00');
+
         // Position was closed 3 hours ago with net loss -160 USDT (before midnight)
         Position::create([
             'symbol' => 'SOL-USDT',
@@ -583,13 +585,15 @@ class PositionManagerTest extends TestCase
         $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
         $this->assertDatabaseCount('positions', 1);
 
-        // If closed_at was 9 hours ago (outside the 8-hour lockout window)
+        // If closed_at was 25 hours ago (outside the 8-hour lockout window AND not today)
         Position::where('symbol', 'SOL-USDT')->update([
-            'closed_at' => now()->subHours(9),
+            'closed_at' => now()->subHours(25),
         ]);
 
         // When lockout window has passed and no loss today, entry is allowed
         $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
         $this->assertDatabaseCount('positions', 2);
+
+        \Carbon\Carbon::setTestNow();
     }
 }

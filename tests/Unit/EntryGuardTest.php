@@ -153,4 +153,43 @@ class EntryGuardTest extends TestCase
         // LONG is allowed (not deadlocked)
         $this->assertTrue($guard->allows($ctx, Direction::Long, SignalType::Bounce));
     }
+
+    public function test_blocks_entries_when_btc_storm_is_detected(): void
+    {
+        $guard = new EntryGuard([
+            'btc_storm_filter_enabled' => true,
+            'btc_storm_threshold_pct' => 0.80,
+            'btc_storm_lookback' => 15,
+            'btc_filter_enabled' => true,
+        ]);
+
+        // Create 15 BTC candles with a massive 1% swing
+        $btcCandles = [];
+        // Price starts at 100,000. Drops to 99,000 (-1.0%), then up to 100,000.
+        // MinLow = 99,000. MaxHigh = 100,000. Width = (100k - 99k) / 99k = 1.01%.
+        for ($i = 0; $i < 15; $i++) {
+            if ($i === 7) {
+                // The storm wick
+                $btcCandles[] = new Candle(1_000, 99500.0, 100000.0, 99000.0, 99200.0, 100.0, 1_000);
+            } else {
+                $btcCandles[] = new Candle(1_000, 99800.0, 99900.0, 99700.0, 99850.0, 10.0, 1_000);
+            }
+        }
+
+        $ctx = $this->createContext(
+            btcCandles: $btcCandles,
+            btcHtfCandles: [$btcCandles[0], $btcCandles[0], $btcCandles[0]] // fake HTF data
+        );
+
+        // Storm threshold is 0.80%, our width is >1.0%, so entries should be blocked
+        $this->assertFalse($guard->allows($ctx, Direction::Long, SignalType::Bounce));
+        $this->assertFalse($guard->allows($ctx, Direction::Short, SignalType::Bounce));
+
+        // Now test with storm filter disabled
+        $guardDisabled = new EntryGuard([
+            'btc_storm_filter_enabled' => false,
+            'btc_filter_enabled' => false,
+        ]);
+        $this->assertTrue($guardDisabled->allows($ctx, Direction::Long, SignalType::Bounce));
+    }
 }

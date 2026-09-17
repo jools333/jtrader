@@ -125,7 +125,7 @@ class BounceStrategyTest extends TestCase
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
-        $this->assertEquals(87.5, $diag->score);
+        $this->assertEquals(88.89, $diag->score);
         $this->assertFalse($diag->isFullSignal);
 
         // evaluate should return entrySignal because all Hard filters passed and 87.5 >= minEntryScore 75.0
@@ -160,7 +160,7 @@ class BounceStrategyTest extends TestCase
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
-        $this->assertEquals(75.0, $diag->score);
+        $this->assertEquals(77.78, $diag->score);
 
         $signal = $strategy->evaluate($ctx, $planner);
         $this->assertNotNull($signal);
