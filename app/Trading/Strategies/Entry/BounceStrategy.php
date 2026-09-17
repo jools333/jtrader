@@ -34,7 +34,7 @@ final class BounceStrategy implements EntryStrategyInterface
         private readonly float $stopBufferAtr = 0.25,
         private readonly float $entryZoneAtr = 0.85,
         private readonly float $volumeMultiplier = 1.15,
-        private readonly float $climaxVolumeMultiplier = 2.20,
+        private readonly float $climaxVolumeMultiplier = 2.21,
         private readonly array $symbolMinEntryScores = [],
     ) {}
 
@@ -91,7 +91,7 @@ final class BounceStrategy implements EntryStrategyInterface
         $missing = [];
 
         // 1. Подход к уровню поддержки
-        $minLow = min(array_map(static fn (Candle $c) => $c->low, $window));
+        $minLow = min(array_map(static fn(Candle $c) => $c->low, $window));
         // Зона поддержки: от L - 0.5 ATR до L + 0.5 ATR
         $passedApproach = $minLow <= $level + $atr * $this->levelApproachAtr && $minLow >= $level - $atr * $this->levelApproachAtr;
 
@@ -279,7 +279,7 @@ final class BounceStrategy implements EntryStrategyInterface
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
         $total = count($criteria);
-        $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
+        $passed = count(array_filter($criteria, static fn(CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
@@ -320,7 +320,7 @@ final class BounceStrategy implements EntryStrategyInterface
         $missing = [];
 
         // 1. Подход к уровню сопротивления
-        $maxHigh = max(array_map(static fn (Candle $c) => $c->high, $window));
+        $maxHigh = max(array_map(static fn(Candle $c) => $c->high, $window));
         // Зона сопротивления: от L - 0.5 ATR до L + 0.5 ATR
         $passedApproach = $maxHigh >= $level - $atr * $this->levelApproachAtr && $maxHigh <= $level + $atr * $this->levelApproachAtr;
 
@@ -508,7 +508,7 @@ final class BounceStrategy implements EntryStrategyInterface
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
         $total = count($criteria);
-        $passed = count(array_filter($criteria, static fn (CriterionResult $c) => $c->passed));
+        $passed = count(array_filter($criteria, static fn(CriterionResult $c) => $c->passed));
         $score = round(($passed / $total) * 100, 2);
         $isFull = ($passed === $total);
 
