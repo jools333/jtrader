@@ -39,7 +39,13 @@ return [
         'DOGE-USDT' => (float) env('TRADING_MAX_POSITION_PCT_DOGE', 2.5),
     ],
     // Hard cap: maximum number of concurrent open positions across all symbols (0 = disabled).
-    'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 3),
+    'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 2),
+    // Maximum concurrent positions in the same direction across all symbols (0 = disabled).
+    // Prevents correlated multi-asset basket liquidation when BTC suddenly reverses.
+    'max_positions_per_direction' => (int) env('TRADING_MAX_POSITIONS_PER_DIRECTION', 1),
+    // Minimum interval in minutes between opening ANY positions across all symbols (0 = disabled).
+    // Staggers entries to prevent opening multiple pairs on the exact same 1-minute candle.
+    'min_entry_interval_minutes' => (int) env('TRADING_MIN_ENTRY_INTERVAL_MINUTES', 10),
     // Minimum cooldown in minutes between positions on the same symbol (0 = disabled).
     'entry_cooldown_minutes' => (int) env('TRADING_ENTRY_COOLDOWN_MINUTES', 45),
     // Extended cooldown in minutes after a Stop Loss exit on the same symbol (0 = use entry_cooldown_minutes).
@@ -47,6 +53,9 @@ return [
     // Daily loss circuit breaker in USDT (0 = disabled).
     // If net closed PnL for the current calendar day reaches -X USDT, pause opening new positions.
     'daily_loss_limit' => (float) env('TRADING_DAILY_LOSS_LIMIT', 150.0),
+    // Lockout duration in hours after daily loss limit is hit (0 = disabled).
+    // Prevents midnight calendar reset (00:00 MSK) from prematurely unblocking trading after a late evening drawdown.
+    'daily_loss_lockout_hours' => (int) env('TRADING_DAILY_LOSS_LOCKOUT_HOURS', 8),
 
     /*
     |--------------------------------------------------------------------------

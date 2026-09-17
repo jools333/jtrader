@@ -79,6 +79,8 @@ final class PositionManager
             && $result->entrySignal !== null
             && ! $isExcluded
             && ! $this->hasReachedMaxOpenPositions()
+            && ! $this->hasReachedMaxPositionsInDirection($result->entrySignal->direction->value)
+            && ! $this->hasRecentPortfolioEntry()
             && ! $this->isCoolingDown($symbol)
             && ! $this->isDailyLossLimitReached()
         ) {
@@ -308,6 +310,47 @@ final class PositionManager
     }
 
     /**
+     * Whether the maximum number of open positions in the given direction across all symbols has been reached.
+     */
+    public function hasReachedMaxPositionsInDirection(string $direction): bool
+    {
+        $max = (int) ($this->config['max_positions_per_direction'] ?? 0);
+        if ($max <= 0) {
+            return false;
+        }
+
+        $count = Position::query()->open()->where('direction', $direction)->count();
+        if ($count >= $max) {
+            Log::info("[risk_guard] Maximum open {$direction} positions limit reached ({$count}/{$max}). Skipping entry.");
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether any position across all symbols was opened within the stagger interval.
+     */
+    public function hasRecentPortfolioEntry(): bool
+    {
+        $minutes = (int) ($this->config['min_entry_interval_minutes'] ?? 0);
+        if ($minutes <= 0) {
+            return false;
+        }
+
+        $since = Carbon::now()->subMinutes($minutes);
+        $recent = Position::query()->where('opened_at', '>=', $since)->exists();
+        if ($recent) {
+            Log::info("[risk_guard] A position was opened within the last {$minutes}m. Staggering entries to prevent clustering. Skipping entry.");
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Whether this symbol has had an opened or closed position within the cooldown window.
      * If the most recent closed position was stopped out (STOP_LOSS), uses stop_loss_cooldown_minutes.
      */
@@ -352,7 +395,7 @@ final class PositionManager
     }
 
     /**
-     * Whether the net closed PnL for the current calendar day has reached or exceeded the daily loss limit.
+     * Whether the net closed PnL for the current calendar day or rolling lockout window has reached or exceeded the daily loss limit.
      */
     public function isDailyLossLimitReached(): bool
     {
@@ -361,18 +404,65 @@ final class PositionManager
             return false;
         }
 
+        $maxAllowedLoss = -abs($limit);
+
         $tz = (string) config('services.telegram.report_timezone', config('app.timezone', 'UTC'));
         $now = Carbon::now($tz);
         $todayStart = $now->copy()->startOfDay()->utc();
         $todayEnd = $now->copy()->endOfDay()->utc();
 
-        $positions = Position::query()
+        // 1. Current calendar day check
+        $todayPositions = Position::query()
             ->where('status', Position::STATUS_CLOSED)
             ->whereBetween('closed_at', [$todayStart, $todayEnd])
             ->get();
 
+        $todayNetPnl = $this->sumNetPnl($todayPositions);
+        if ($todayNetPnl <= $maxAllowedLoss) {
+            Log::warning(sprintf(
+                '[circuit_breaker] Daily loss limit reached (today): Net PnL %.2f USDT <= %.2f USDT (limit: %.2f USDT). Pausing entries.',
+                $todayNetPnl,
+                $maxAllowedLoss,
+                $limit
+            ));
+
+            $this->notifyDailyLossCircuitBreaker($todayNetPnl, $limit, $now->format('Y-m-d'));
+
+            return true;
+        }
+
+        // 2. Rolling lockout window check (protects against midnight calendar reset unblocking right after a late evening drawdown)
+        $lockoutHours = (int) ($this->config['daily_loss_lockout_hours'] ?? 0);
+        if ($lockoutHours > 0) {
+            $lockoutSince = Carbon::now()->subHours($lockoutHours);
+            $lockoutPositions = Position::query()
+                ->where('status', Position::STATUS_CLOSED)
+                ->where('closed_at', '>=', $lockoutSince)
+                ->get();
+
+            $lockoutNetPnl = $this->sumNetPnl($lockoutPositions);
+            if ($lockoutNetPnl <= $maxAllowedLoss) {
+                Log::warning(sprintf(
+                    '[circuit_breaker] Lockout active from recent losses (%dh window): Net PnL %.2f USDT <= %.2f USDT (limit: %.2f USDT). Pausing entries.',
+                    $lockoutHours,
+                    $lockoutNetPnl,
+                    $maxAllowedLoss
+                ));
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Position>  $positions
+     */
+    private function sumNetPnl(\Illuminate\Database\Eloquent\Collection $positions): float
+    {
         if ($positions->isEmpty()) {
-            return false;
+            return 0.0;
         }
 
         $reportService = $this->reportService ?? (app()->bound(DailyPositionReportService::class) ? app(DailyPositionReportService::class) : null);
@@ -383,21 +473,7 @@ final class PositionManager
             $netPnl += $pos->netPnl() ?? 0.0;
         }
 
-        $maxAllowedLoss = -abs($limit);
-        if ($netPnl <= $maxAllowedLoss) {
-            Log::warning(sprintf(
-                '[circuit_breaker] Daily loss limit reached: Net PnL %.2f USDT <= %.2f USDT (limit: %.2f USDT). Pausing entries.',
-                $netPnl,
-                $maxAllowedLoss,
-                $limit
-            ));
-
-            $this->notifyDailyLossCircuitBreaker($netPnl, $limit, $now->format('Y-m-d'));
-
-            return true;
-        }
-
-        return false;
+        return $netPnl;
     }
 
     /**

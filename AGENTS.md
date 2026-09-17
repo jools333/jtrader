@@ -120,10 +120,12 @@ Trading logic is located in `app/Trading/`:
 - **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`, `BingXPositionSyncService`)**:
   - *Orphan Order Cleanup*: `cancelAllOrders(symbol)` called on 100% position close and before opening new positions.
   - *Single Position per Symbol*: prevents accumulating duplicate legs across intervals.
-  - *Max Open Positions*: `TRADING_MAX_OPEN_POSITIONS=3` caps concurrent active positions across all symbols to prevent portfolio-wide stop cascade on macro trend reversals.
-  - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=30` prevents re-entering the same symbol for 30 minutes after close.
-  - *Extended Stop-Loss Cooldown*: `TRADING_STOP_LOSS_COOLDOWN_MINUTES=60` enforces 60-minute pause on a symbol after a Stop Loss exit to avoid re-entering into ongoing hostile breakouts.
-  - *Daily Loss Circuit Breaker*: `TRADING_DAILY_LOSS_LIMIT=150.0` pauses opening new positions for the rest of the day if net closed loss reaches -150 USDT, protecting against fee erosion during sideways chop. Sends a single Telegram alert.
+  - *Max Open Positions*: `TRADING_MAX_OPEN_POSITIONS=2` caps concurrent active positions across all symbols.
+  - *Directional Cap*: `TRADING_MAX_POSITIONS_PER_DIRECTION=1` prevents holding more than 1 position in the same direction, eliminating correlated multi-asset basket liquidation when BTC suddenly reverses.
+  - *Entry Stagger*: `TRADING_MIN_ENTRY_INTERVAL_MINUTES=10` enforces at least 10 minutes between opening ANY positions across all symbols, preventing 30-second cluster entries on the same 1-minute impulse bar.
+  - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=45` prevents re-entering the same symbol for 45 minutes after close.
+  - *Extended Stop-Loss Cooldown*: `TRADING_STOP_LOSS_COOLDOWN_MINUTES=90` enforces 90-minute pause on a symbol after a Stop Loss exit to avoid re-entering into ongoing hostile breakouts.
+  - *Daily Loss Circuit Breaker & Lockout*: `TRADING_DAILY_LOSS_LIMIT=150.0` pauses opening new positions if net closed loss reaches -150 USDT. `TRADING_DAILY_LOSS_LOCKOUT_HOURS=8` prevents midnight calendar reset (00:00 MSK) from prematurely unblocking trading after a late evening drawdown. Sends a single Telegram alert.
   - *Per-Symbol Risk & Quality Caps*:
     - `symbol_max_position_pct`: DOGE capped at 2.5% notional (vs 10% default) to restrict drawdown on noisy meme wicks.
     - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
@@ -198,9 +200,14 @@ Real trade statistics (positions, PnL) should be checked on the production serve
   - *Total Trades*: 11 trades, **6/11 wins (54.5% Win Rate)**, Realized: -$3.21, Fees: -$39.78, **Net PnL: -$42.99** (LONG: -$38.52, SHORT: -$4.47).
   - *Afternoon Win Streak*: 3 consecutive TP1 hits (ADA: +$8.19, SOL: +$13.54, XRP: +$18.89).
   - *Issues*: Two massive EarlyReversal losses (BNB: -$45.74, ADA: -$37.09) wiped out all 6 wins due to inverted 1:2.5 R:R in quick mode; evening deployment of Maker PostOnly caused 24 rejected orders.
-- **2026-09-12 (Morning, 11:00 MSK)**:
-  - *Total Trades*: 4 trades, **0/4 wins (0.0% Win Rate)**, Realized: -$22.01, Fees: -$4.76, **Net PnL: -$26.77**.
-  - *Maker PostOnly Adverse Selection*: 2 limit orders timed out and cancelled (LINK, XRP); the only 2 filled orders were adverse moves hitting SL (DOGE: -$13.40, ETH: -$13.37); 24 potential entries rejected by BingX.
-  - *Account Balance / Equity*: **90,502.92 VST**.
-  - *Remediation*: Disabled `entry_post_only` to restore reliable execution; disabled `early_reversal_enabled` to eliminate premature panic closes; rebalanced R:R to $\ge 1.5R$; tuned Break-Even to 0.40%/0.08% buffer; resolved BTC HTF trend deadlock.
+- **2026-09-15**:
+  - *Total Trades*: 17 trades, **10/17 wins (58.8% Win Rate)**, Realized PnL: +$261.02, Fees: -$73.35, **Net PnL: +$187.67** (XRP SHORT: +$92.98, ETH SHORT: +$45.12, SOL SHORT: +$38.45). Account Equity reached all-time high of **90,639.49 VST**.
+- **2026-09-16 – 2026-09-17**:
+  - *Total Trades*: 20 trades, **3/20 wins (15.0% Win Rate)**, Net PnL: **-414.30 USDT** (Equity dropped to **90,237.73 VST**).
+  - *Daytime (01:00 – 21:00 MSK)*: Stable controlled trading (-$44.65 net across 12 trades; LINK +$19.02, ETH +$18.43, LINK +$9.54).
+  - *Incident & Root Cause Analysis*:
+    1. **Synchronous 3-Long Cluster Cascade (21:08 MSK)**: A 1-minute BTC false bounce triggered simultaneous LONG entries on BNB (#516), XRP (#517), and ADA (#518) within 32 seconds under `max_open_positions=3`. Six minutes later, BTC dumped sharply and stopped out all 3 longs simultaneously, wiping out **-184.86 USDT** in 6 minutes.
+    2. **Remote Daily Loss Limit Misconfiguration**: `.env` on remote server had `TRADING_DAILY_LOSS_LIMIT=300.0` instead of 150.0. Cumulative loss reached -294.63 USDT at 21:43 MSK (just $5.37 short of 300), so the circuit breaker failed to halt trading.
+    3. **Midnight Calendar Day Reset**: At 00:00 MSK, the circuit breaker daily calculation reset to zero, allowing the bot to enter nighttime chop and lose an additional -$120 USDT across correlated shorts (ETH/SOL) and ADA long.
+    4. **Remediation Implemented**: Enforced `TRADING_MAX_POSITIONS_PER_DIRECTION=1` (no multi-asset directional baskets), `TRADING_MIN_ENTRY_INTERVAL_MINUTES=10` (staggered entries), `TRADING_DAILY_LOSS_LIMIT=150.0`, and `TRADING_DAILY_LOSS_LOCKOUT_HOURS=8` (rolling window lockout).
 
