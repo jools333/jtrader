@@ -145,12 +145,13 @@ class BounceStrategyTest extends TestCase
         // Other 4 soft criteria pass (trend, approach, entry_zone, confirmation).
         // Result: 6/8 criteria pass = 75.0%, both Hard filters pass -> entry generated!
         $candles = $this->baseline(10, 108.0, 103.0);
+        $candles = $this->baseline(10, 108.0, 103.0);
         $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0); // minLow 100.0
-        $candles[] = $this->candle(100.5, 100.8, 100.1, 100.3, 100.0); // close 100.3 < 100.5 (atr_bounce fails), volume 100 < 115 (volume fails)
+        $candles[] = $this->candle(100.1, 100.8, 100.0, 100.3, 120.0); // close > open (bullish), but close 100.3 < 100.5 (atr_bounce fails)
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);
-        $ema8[$n - 1] = 96.0; // rising
+        // ema8 is flat (95.0), close (100.3) < open (100.5) -> bullish_confirmation fails
         $ema50 = array_fill(0, $n, 90.0); // price (100.1) > ema50 (90)
 
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
@@ -301,11 +302,10 @@ class BounceStrategyTest extends TestCase
         // Create a 75% score setup (6 out of 8 criteria pass)
         $candles = $this->baseline(10, 108.0, 103.0);
         $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0);
-        $candles[] = $this->candle(100.5, 100.8, 100.1, 100.3, 100.0); // close 100.3 < 100.5 (atr_bounce fails), volume fails
+        $candles[] = $this->candle(100.1, 100.8, 100.0, 100.3, 120.0); // close > open (bullish)
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);
-        $ema8[$n - 1] = 96.0;
         $ema50 = array_fill(0, $n, 90.0);
 
         $planner = new TradePlanner(['tp_percent' => 0.35]);

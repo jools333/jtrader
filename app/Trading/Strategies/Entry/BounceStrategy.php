@@ -275,6 +275,7 @@ final class BounceStrategy implements EntryStrategyInterface
             'normal_atr' => $passedNormalAtr,
             'no_climax' => $passedNoClimax,
             'no_chasing' => $passedNoChasing,
+            'volume_surge' => $passedVolumeSurge,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
@@ -504,6 +505,7 @@ final class BounceStrategy implements EntryStrategyInterface
             'normal_atr' => $passedNormalAtr,
             'no_climax' => $passedNoClimax,
             'no_chasing' => $passedNoChasing,
+            'volume_surge' => $passedVolumeSurge,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
