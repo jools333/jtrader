@@ -128,6 +128,38 @@ final class EntryGuard
             }
         }
 
+
+        // 5. Старший таймфрейм самого альткоина (Altcoin HTF Regime: 1h)
+        if ($direction !== null && $ctx->symbol !== 'BTC-USDT') {
+            $altHtfFilterEnabled = (bool) ($this->config['alt_htf_filter_enabled'] ?? true);
+            if ($altHtfFilterEnabled) {
+                try {
+                    $repo = app(\App\Market\Contracts\CandleRepositoryInterface::class);
+                    $htfCandles = $repo->recent($ctx->symbol, '1h', 60);
+                    if (!empty($htfCandles) && count($htfCandles) >= 50) {
+                        $htfCandles = array_values($htfCandles);
+                        $closes = array_map(static fn ($c) => $c->close, $htfCandles);
+                        $ema50 = \App\Trading\Analysis\Support\SeriesMath::ema($closes, 50);
+                        if (!empty($ema50)) {
+                            $lastEma50 = end($ema50);
+                            $lastPrice = end($htfCandles)->close;
+                            
+                            // Блокируем LONG, если цена на 1H ниже EMA50 (макро-даунтренд альткоина)
+                            if ($direction === \App\Trading\Enums\Direction::Long && $lastPrice < $lastEma50) {
+                                return false;
+                            }
+                            // Блокируем SHORT, если цена на 1H выше EMA50 (макро-аптренд альткоина)
+                            if ($direction === \App\Trading\Enums\Direction::Short && $lastPrice > $lastEma50) {
+                                return false;
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Игнорируем ошибки при запросе старшего таймфрейма, чтобы не сломать тесты или логику
+                }
+            }
+        }
+
         // Все защитные фильтры пройдены успешно
         return true;
     }

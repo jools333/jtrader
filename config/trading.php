@@ -114,7 +114,7 @@ return [
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
         'bounce_level_approach_atr' => (float) env('TRADING_BOUNCE_LEVEL_APPROACH_ATR', 0.75), // Допустимая зона от уровня для теста (в ATR)
         'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.50), // Допустимая зона для точки входа с учетом отскока (в ATR)
-        'bounce_reversal_atr' => 0.10,    // Требуемый отскок от экстремума (в ATR)
+        'bounce_reversal_atr' => env('TRADING_BOUNCE_REVERSAL_ATR', 0.15),    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
         'bounce_volume_multiplier' => (float) env('TRADING_BOUNCE_VOLUME_MULT', 1.15), // Мин. всплеск объема на триггерной свече отскока
