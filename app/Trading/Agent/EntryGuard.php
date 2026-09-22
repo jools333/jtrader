@@ -134,7 +134,7 @@ final class EntryGuard
             $altHtfFilterEnabled = (bool) ($this->config['alt_htf_filter_enabled'] ?? true);
             if ($altHtfFilterEnabled) {
                 try {
-                    $repo = app(\App\Market\Contracts\CandleRepositoryInterface::class);
+                    $repo = app(\App\Market\Repositories\CandleRepository::class);
                     $htfCandles = $repo->recent($ctx->symbol, '1h', 60);
                     if (!empty($htfCandles) && count($htfCandles) >= 50) {
                         $htfCandles = array_values($htfCandles);
