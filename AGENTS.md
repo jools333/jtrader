@@ -131,9 +131,12 @@ Trading logic is located in `app/Trading/`:
     - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
   - *Pending Limit Order Sync Protection*: 3-minute grace period with resting order inspection prevents prematurely marking unfilled limit entries as closed.
   - *Dynamic Profit Protection & Trailing Stop (`PositionManager::manageDynamicProtection`)*:
-    - *Quick Scalp Take-Profit (`TRADING_TP_MODE=quick`)*: TP placed at $+0.35\%$ net ($+0.42\%$ with exchange fees) for fast profit locking.
-    - *Automatic Break-Even (`TRADING_BE_ENABLED=true`)*: When unrealized profit reaches $\ge +0.25\%$, stop loss is automatically relocated on BingX to $\text{Entry} \pm 0.05\%$ (covering round-trip fees), preventing winning trades from turning into losses.
-    - *Dynamic Trailing Stop (`TRADING_TRAILING_ENABLED=true`)*: When unrealized profit reaches $\ge +0.40\%$, stop loss trails $0.20\%$ behind the peak price, locking in gains on market reversals and capturing extended trends.
+    - *Quick Scalp Take-Profit (`TRADING_TP_MODE=quick`)*: TP placed at $+0.35\%$ net ($+0.42\%$ with exchange fees) for fast profit locking. In standard mode (`TRADING_TP_MODE=rr`), Target 1 is scaled to $\ge 1.5R - 2.0R$.
+    - *Automatic Break-Even (`TRADING_BE_ENABLED=true`)*: When unrealized profit reaches $\ge +0.60\%$ (`TRADING_BE_TRIGGER_PCT=0.60`), stop loss is automatically relocated on BingX to $\text{Entry} \pm 0.15\%$ (`TRADING_BE_BUFFER_PCT=0.15`), guaranteeing net profit after exchange round-trip fees (0.10%) and preventing winning trades from turning into losses or micro-losses.
+    - *Dynamic Trailing Stop (`TRADING_TRAILING_ENABLED=true`)*: When unrealized profit reaches $\ge +0.80\%$ (`TRADING_TRAILING_TRIGGER_PCT=0.80`), stop loss trails $0.35\%$ behind the peak price (`TRADING_TRAILING_DISTANCE_PCT=0.35`), letting trades absorb 1-minute noise while capturing extended swings.
+  - *Exit Reason Price-Based Inference & Sync Protection (`BingXPositionSyncService::inferExitReasonFromPrice`)*:
+    - When BingX fills a relocated stop or dynamic protection exit, it marks the order as `MARKET` and cancels the original brackets. Previously, this caused 80%+ of trades to be saved with `exit_reason = NULL` or `exchange_closed`.
+    - Added fallback price inference comparing `exit_price` against `target1` and `stop_price` levels to accurately distinguish `take_profit_hit`, `stop_loss_hit`, `trailing_stop`, and `break_even`. Added automatic backfill in step 5 of sync and via `positions:backfill-exit-reason` artisan command.
 - **Active Entry Strategies Status**:
   - `BounceStrategy`: Multi-candle Price Action bounce setup from key horizontal levels with technical Stop Loss placed beyond support/resistance ($L \pm 0.25 \times \text{ATR}$) and calibrated Take Profit ($R:R \ge 2.0$, ensuring fees are well covered). The only active entry strategy.
   - `BtcLeadLagStrategy`: Cross-asset momentum spillover / lead-lag entry following BTC impulses. Disabled (`TRADING_LEAD_LAG_ENABLED=false`) due to correlation risk on multi-asset cascade entries during false BTC breakouts.
@@ -210,4 +213,20 @@ Real trade statistics (positions, PnL) should be checked on the production serve
     2. **Remote Daily Loss Limit Misconfiguration**: `.env` on remote server had `TRADING_DAILY_LOSS_LIMIT=300.0` instead of 150.0. Cumulative loss reached -294.63 USDT at 21:43 MSK (just $5.37 short of 300), so the circuit breaker failed to halt trading.
     3. **Midnight Calendar Day Reset**: At 00:00 MSK, the circuit breaker daily calculation reset to zero, allowing the bot to enter nighttime chop and lose an additional -$120 USDT across correlated shorts (ETH/SOL) and ADA long.
     4. **Remediation Implemented**: Enforced `TRADING_MAX_POSITIONS_PER_DIRECTION=1` (no multi-asset directional baskets), `TRADING_MIN_ENTRY_INTERVAL_MINUTES=10` (staggered entries), `TRADING_DAILY_LOSS_LIMIT=150.0`, and `TRADING_DAILY_LOSS_LOCKOUT_HOURS=8` (rolling window lockout).
+- **2026-09-18 – 2026-09-24**:
+  - *Account Equity*: **89,914.32 VST** (~0.8% drawdown from peak 90,639 VST).
+  - *7-Day Verified Closes*: 56 closes, **28/56 wins (50.0% Win Rate)**.
+  - *PnL Breakdown*: Realized PnL: **-$475.28 USDT**, Fees: **-$233.53 USDT**, **Net PnL: -$708.81 USDT**.
+  - *Incident & Root Cause Analysis*:
+    1. **Asymmetric Inverted R:R / Premature Micro-Win Clipping**:
+       - Fixed position sizing capped by `max_position_pct` created uniform ~9,000 USDT notional trades.
+       - Stop loss sat at 0.6%–1.2% (technical swing extreme + buffer), producing full stop losses of -$54 to -$108 USDT (plus ~$9 round-trip fees).
+       - In contrast, Break-Even (`TRADING_BE_TRIGGER_PCT=0.25%`, buffer `0.05%`) and Trailing Stop (`TRADING_TRAILING_TRIGGER_PCT=0.40%`, distance `0.20%`) were set too tight, triggering inside 1-minute noise. Profitable trades were premature-stopped at +$0.50 to +$15.00 USDT, failing to offset stop-losses.
+    2. **Missing `exit_reason` Diagnostic Blindspot**:
+       - 80%+ of closed trades had `exit_reason = NULL` or `exchange_closed` because BingX reports relocated stop executions as `MARKET` fills without bracket metadata.
+    3. **Remediation Implemented (2026-09-24)**:
+       - Recalibrated Dynamic Protection: raised Break-Even trigger to **+0.60%** with a **+0.15%** buffer (ensuring clear net profit above fees), and Trailing Stop trigger to **+0.80%** with a **0.35%** trail distance. Updated both `.env` and `config/trading.php`.
+       - Implemented Price-Based Exit Inference: added `inferExitReasonFromPrice()` in `BingXPositionSyncService` to accurately classify MARKET fills into `take_profit_hit`, `stop_loss_hit`, `trailing_stop`, or `break_even` by comparing fill price against level brackets.
+       - Repaired Historical DB: ran `positions:backfill-exit-reason`, backfilling 346 positions with 0 NULL records remaining.
+       - Rebuilt production config cache and restarted `queue`, `scheduler`, and `ws` containers.
 
