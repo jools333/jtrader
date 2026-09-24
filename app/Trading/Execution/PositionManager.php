@@ -106,8 +106,9 @@ final class PositionManager
             return;
         }
 
+        $positionsEnabled = (bool) ($this->config['chart']['positions_enabled'] ?? config('trading.chart.positions_enabled', false));
         $chartEnabled = (bool) ($this->config['chart']['enabled'] ?? config('trading.chart.enabled', false));
-        if (! $chartEnabled) {
+        if (! $positionsEnabled || ! $chartEnabled) {
             return;
         }
 

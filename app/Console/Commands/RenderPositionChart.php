@@ -43,7 +43,7 @@ class RenderPositionChart extends Command
         }
 
         // Force-enable rendering for this explicit, on-demand invocation.
-        $renderer = new ChartRenderer(['enabled' => true] + (array) config('trading.chart'));
+        $renderer = new ChartRenderer(['enabled' => true, 'positions_enabled' => true] + (array) config('trading.chart'));
         $path = $renderer->render($position, $candles);
 
         if ($path === null) {

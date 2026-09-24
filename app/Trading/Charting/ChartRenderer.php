@@ -44,6 +44,11 @@ final class ChartRenderer
      */
     public function render(Position $position, array $candles): ?string
     {
+        $positionsEnabled = (bool) ($this->config['positions_enabled'] ?? config('trading.chart.positions_enabled', false));
+        if (! $positionsEnabled) {
+            return null;
+        }
+
         if (! ($this->config['enabled'] ?? false)) {
             return null;
         }

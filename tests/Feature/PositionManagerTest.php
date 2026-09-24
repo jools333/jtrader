@@ -596,4 +596,72 @@ class PositionManagerTest extends TestCase
 
         \Carbon\Carbon::setTestNow();
     }
+
+    public function test_position_chart_is_not_dispatched_when_positions_enabled_is_false(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'chart' => [
+                    'enabled' => true,
+                    'positions_enabled' => false,
+                    'queue' => true,
+                ],
+            ]),
+            chart: new \App\Trading\Charting\ChartRenderer(['enabled' => true, 'positions_enabled' => false]),
+        );
+
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 1);
+
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RenderPositionChartJob::class);
+    }
+
+    public function test_position_chart_is_dispatched_when_positions_enabled_is_true(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $manager = new PositionManager(
+            agent: new TradingAgent((array) config('trading.agent')),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'chart' => [
+                    'enabled' => true,
+                    'positions_enabled' => true,
+                    'queue' => true,
+                ],
+            ]),
+            chart: new \App\Trading\Charting\ChartRenderer(['enabled' => true, 'positions_enabled' => true]),
+        );
+
+        $manager->process('ETH-USDT', '1h', $this->bounceShortCandles(), 100.0, 10.0);
+        $this->assertDatabaseCount('positions', 1);
+
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RenderPositionChartJob::class);
+    }
+
+    public function test_chart_renderer_returns_null_when_positions_enabled_is_false(): void
+    {
+        $position = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'BOUNCE',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 105.0,
+            'target1' => 95.0,
+            'target2' => 90.0,
+            'quantity' => 1.0,
+            'opened_at' => now(),
+        ]);
+
+        $renderer = new \App\Trading\Charting\ChartRenderer(['enabled' => true, 'positions_enabled' => false]);
+        $path = $renderer->render($position, $this->bounceShortCandles());
+
+        $this->assertNull($path);
+    }
 }

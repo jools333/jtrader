@@ -160,6 +160,7 @@ return [
     */
     'chart' => [
         'enabled' => (bool) env('TRADING_CHART', false),
+        'positions_enabled' => (bool) env('TRADING_POSITION_CHART', false),
         'queue' => (bool) env('TRADING_CHART_QUEUE', true),
         'max_concurrent' => (int) env('TRADING_CHART_MAX_CONCURRENT', 1),
         'python_bin' => env('TRADING_CHART_PYTHON', 'python3'),
