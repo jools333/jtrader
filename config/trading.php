@@ -136,7 +136,7 @@ return [
         // Настройки автоматического безубытка (Break-Even) и трейлинг-стопа
         'break_even_enabled' => (bool) env('TRADING_BE_ENABLED', true),
         'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.60), // порог активации безубытка (+0.60% прибыли)
-        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.10),   // буфер комиссии (+0.10% от точки входа для гарантии чистой прибыли)
+        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.15),   // буфер комиссии (+0.15% от точки входа для гарантии чистой прибыли)
         'trailing_stop_enabled' => (bool) env('TRADING_TRAILING_ENABLED', true),
         'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.80), // порог активации трейлинга (+0.80% прибыли)
         'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.35), // отступ трейлинга от пика (0.35%)

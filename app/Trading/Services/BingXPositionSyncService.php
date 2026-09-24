@@ -305,6 +305,10 @@ class BingXPositionSyncService
                 $cPos->exit_type = $closeData['exit_type'];
                 $changed = true;
             }
+            if ($closeData['exit_reason'] && (! $cPos->exit_reason || $cPos->exit_reason === 'exchange_closed')) {
+                $cPos->exit_reason = $closeData['exit_reason'];
+                $changed = true;
+            }
 
             $cPos->synced_at = now();
             if (! $dryRun) {
@@ -454,7 +458,10 @@ class BingXPositionSyncService
                     $exitReason = 'stop_loss_hit';
                 } else {
                     $exitType = 'MARKET';
-                    $exitReason = 'exchange_closed';
+                    // For existing positions with known stop/target, infer reason from price
+                    $exitReason = ($existing !== null && $exitPrice !== null)
+                        ? $this->inferExitReasonFromPrice($existing, $exitPrice)
+                        : 'exchange_closed';
                 }
             }
 
@@ -699,7 +706,7 @@ class BingXPositionSyncService
                 $exitReason = 'stop_loss_hit';
             } else {
                 $exitType = 'MARKET';
-                $exitReason = 'external_close';
+                $exitReason = $this->inferExitReasonFromPrice($pos, $exitPrice);
             }
 
             if (! empty($closingOrder['updateTime'])) {
@@ -717,6 +724,52 @@ class BingXPositionSyncService
             'exit_order_id' => $exitOrderId ?: $pos->exit_order_id,
             'closed_at' => $closedAt,
         ];
+    }
+
+    /**
+     * Infer exit reason when BingX reports a MARKET close (typically from
+     * dynamic protection relocating the stop, or manual close).
+     * Compares exit_price against the position's known stop and target levels.
+     */
+    public function inferExitReasonFromPrice(Position $pos, float $exitPrice): string
+    {
+        $entry = $pos->entry_price;
+        $stop = $pos->stop_price;
+        $target1 = $pos->target1;
+        $isLong = $pos->direction === Direction::Long->value;
+
+        if ($entry <= 0.0 || $exitPrice <= 0.0) {
+            return 'exchange_closed';
+        }
+
+        $profitPct = $isLong
+            ? (($exitPrice - $entry) / $entry) * 100.0
+            : (($entry - $exitPrice) / $entry) * 100.0;
+
+        // Exit price near target1 (within 0.15% of entry) → take_profit_hit
+        if ($target1 > 0.0) {
+            $distToTarget = abs($exitPrice - $target1) / $entry * 100.0;
+            if ($distToTarget < 0.15) {
+                return 'take_profit_hit';
+            }
+        }
+
+        // Exit price near original stop (within 0.15% of entry) → stop_loss_hit
+        if ($stop > 0.0) {
+            $distToStop = abs($exitPrice - $stop) / $entry * 100.0;
+            if ($distToStop < 0.15) {
+                return 'stop_loss_hit';
+            }
+        }
+
+        // Closed in profit but not at target → trailing_stop or break_even
+        if ($profitPct >= 0.0) {
+            return $profitPct >= 0.30 ? 'trailing_stop' : 'break_even';
+        }
+
+        // Closed in loss but not at original stop → stop was relocated (dynamic protection)
+        // or market close; still a stop loss
+        return 'stop_loss_hit';
     }
 
     /**
