@@ -126,8 +126,11 @@ Trading logic is located in `app/Trading/`:
   - *Cooldown*: `TRADING_ENTRY_COOLDOWN_MINUTES=45` prevents re-entering the same symbol for 45 minutes after close.
   - *Extended Stop-Loss Cooldown*: `TRADING_STOP_LOSS_COOLDOWN_MINUTES=90` enforces 90-minute pause on a symbol after a Stop Loss exit to avoid re-entering into ongoing hostile breakouts.
   - *Daily Loss Circuit Breaker & Lockout*: `TRADING_DAILY_LOSS_LIMIT=150.0` pauses opening new positions if net closed loss reaches -150 USDT. `TRADING_DAILY_LOSS_LOCKOUT_HOURS=8` prevents midnight calendar reset (00:00 MSK) from prematurely unblocking trading after a late evening drawdown. Sends a single Telegram alert.
-  - *Per-Symbol Risk & Quality Caps*:
-    - `symbol_max_position_pct`: DOGE capped at 2.5% notional (vs 10% default) to restrict drawdown on noisy meme wicks.
+  - *Risk & Position Sizing Caps*:
+    - `max_position_pct`: Default notional cap lowered to **3.5%** (was 5.0%), capping position size at ~3,150 USDT on 90,000 VST balance.
+    - `max_stop_percent`: Hard stop-loss ceiling lowered to **1.1%** (was 1.6%), capping price risk per trade to $\le \$35$.
+    - `bounce_reversal_atr`: Recalibrated to **0.20 ATR** (was 0.30 ATR), allowing earlier entries closer to the bounce level with shorter technical stops.
+    - `symbol_max_position_pct`: DOGE capped at 2.5% notional to restrict drawdown on noisy meme wicks.
     - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
   - *Pending Limit Order Sync Protection*: 3-minute grace period with resting order inspection prevents prematurely marking unfilled limit entries as closed.
   - *Dynamic Profit Protection & Trailing Stop (`PositionManager::manageDynamicProtection`)*:

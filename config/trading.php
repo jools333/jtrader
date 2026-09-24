@@ -34,7 +34,7 @@ return [
     'max_quantity'     => (float) env('TRADING_MAX_QTY', 0.0),
     // Hard cap: notional position value ≤ X% of balance (0 = disabled).
     // Prevents oversized positions when the stop is very tight relative to price.
-    'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 10.0),
+    'max_position_pct' => (float) env('TRADING_MAX_POSITION_PCT', 3.5),
     'symbol_max_position_pct' => [
         'DOGE-USDT' => (float) env('TRADING_MAX_POSITION_PCT_DOGE', 2.5),
     ],
@@ -114,7 +114,7 @@ return [
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
         'bounce_level_approach_atr' => (float) env('TRADING_BOUNCE_LEVEL_APPROACH_ATR', 0.75), // Допустимая зона от уровня для теста (в ATR)
         'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.50), // Допустимая зона для точки входа с учетом отскока (в ATR)
-        'bounce_reversal_atr' => env('TRADING_BOUNCE_REVERSAL_ATR', 0.30),    // Требуемый отскок от экстремума (в ATR)
+        'bounce_reversal_atr' => env('TRADING_BOUNCE_REVERSAL_ATR', 0.20),    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
         'bounce_volume_multiplier' => (float) env('TRADING_BOUNCE_VOLUME_MULT', 1.15), // Мин. всплеск объема на триггерной свече отскока
@@ -128,7 +128,7 @@ return [
         'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker 0.05%) или TAKE_PROFIT (Maker 0.02%)
         'tp_percent' => (float) env('TRADING_TP_PCT', 0.60),             // Профит Target 1 в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
-        'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.6), // Жесткий максимальный порог стоп-лосса (% от цены входа)
+        'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.1), // Жесткий максимальный порог стоп-лосса (% от цены входа)
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)
         'fee_taker_percent' => 0.05,      // Комиссия Taker (рыночный ордер)
