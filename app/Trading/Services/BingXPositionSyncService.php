@@ -272,7 +272,9 @@ class BingXPositionSyncService
             ->where('status', Position::STATUS_CLOSED)
             ->where(function ($q) {
                 $q->whereNull('synced_at')
-                    ->orWhere('commission', 0.0);
+                    ->orWhere('commission', 0.0)
+                    ->orWhereNull('exit_reason')
+                    ->orWhere('exit_reason', 'exchange_closed');
             })
             ->where('closed_at', '>=', now()->subDays($lookbackDays))
             ->when($targetSymbol, fn ($q) => $q->where('symbol', $targetSymbol))

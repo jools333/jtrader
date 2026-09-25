@@ -212,7 +212,11 @@ final class PositionManager
         $position->update([
             'status' => Position::STATUS_CLOSED,
             'exit_type' => $exit->type->value,
-            'exit_reason' => $exit->reason?->value,
+            'exit_reason' => $exit->reason?->value ?? match ($exit->type) {
+                ExitType::StopLoss => 'stop_loss_hit',
+                ExitType::Target2, ExitType::Target1 => 'take_profit_hit',
+                default => null,
+            },
             'exit_price' => $filledAt,
             'realized_pnl' => $this->pnl($position, $filledAt),
             'exit_context' => $context,

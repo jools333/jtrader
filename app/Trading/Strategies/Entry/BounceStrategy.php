@@ -26,7 +26,7 @@ final class BounceStrategy implements EntryStrategyInterface
      */
     public function __construct(
         private readonly ?StrategyLoggerInterface $logger = null,
-        private readonly float $minEntryScore = 75.0,
+        private readonly float $minEntryScore = 80.0,
         private readonly int $lookbackCandles = 10,
         private readonly float $levelApproachAtr = 0.75,
         private readonly float $bounceReversalAtr = 0.10,
@@ -276,6 +276,9 @@ final class BounceStrategy implements EntryStrategyInterface
             'no_climax' => $passedNoClimax,
             'no_chasing' => $passedNoChasing,
             'volume_surge' => $passedVolumeSurge,
+            'level_approach' => $passedApproach,
+            'entry_zone' => $passedEntryZone,
+            'bullish_confirmation' => $passedBullish,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 
@@ -506,6 +509,9 @@ final class BounceStrategy implements EntryStrategyInterface
             'no_climax' => $passedNoClimax,
             'no_chasing' => $passedNoChasing,
             'volume_surge' => $passedVolumeSurge,
+            'level_approach' => $passedApproach,
+            'entry_zone' => $passedEntryZone,
+            'bearish_confirmation' => $passedBearish,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
 

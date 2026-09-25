@@ -103,7 +103,7 @@ return [
         'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.20), // макс допустимый дамп BTC за 3 свечи для входа в LONG
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.20), // макс допустимый памп BTC за 3 свечи для входа в SHORT
         'btc_storm_filter_enabled' => (bool) env('TRADING_BTC_STORM_FILTER_ENABLED', true), // блокировка входов при высокой абсолютной волатильности BTC
-        'btc_storm_threshold_pct' => (float) env('TRADING_BTC_STORM_THRESHOLD_PCT', 0.80), // порог ширины (спреда) BTC для определения "шторма"
+        'btc_storm_threshold_pct' => (float) env('TRADING_BTC_STORM_THRESHOLD_PCT', 0.55), // порог ширины (спреда) BTC для определения "шторма"
         'btc_storm_lookback' => (int) env('TRADING_BTC_STORM_LOOKBACK_CANDLES', 15), // количество последних свечей для измерения шторма
         'early_reversal_enabled' => (bool) env('TRADING_EARLY_REVERSAL_ENABLED', false), // досрочный выход по развороту (отключен для предотвращения панических сливов)
         'btc_fast_exit_dump_percent' => (float) env('TRADING_BTC_FAST_EXIT_DUMP_PCT', 0.80), // импульсный дамп BTC для опережающего выхода из LONG
