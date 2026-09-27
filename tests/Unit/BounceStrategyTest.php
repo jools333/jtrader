@@ -134,25 +134,20 @@ class BounceStrategyTest extends TestCase
         $this->assertSame(Direction::Long, $signal->direction);
     }
 
-    public function test_bounce_long_generates_entry_at_75_percent_score(): void
+    public function test_bounce_rejects_entry_when_hard_filter_strict_trend_fails(): void
     {
         $level = 100.0;
         $atr = 5.0;
 
         // 12 candles: approach level 100.0
-        // 2 Soft criteria fail: atr_bounce fails (close 100.3 < 100.5) AND volume fails (100 < 115)
-        // Hard filters (normal_atr, no_climax) pass.
-        // Other 4 soft criteria pass (trend, approach, entry_zone, confirmation).
-        // Result: 6/8 criteria pass = 75.0%, both Hard filters pass -> entry generated!
-        $candles = $this->baseline(10, 108.0, 103.0);
+        // EMA8 is flat (95.0), so strict_trend fails!
         $candles = $this->baseline(10, 108.0, 103.0);
         $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0); // minLow 100.0
-        $candles[] = $this->candle(100.1, 100.8, 100.0, 100.3, 120.0); // close > open (bullish), but close 100.3 < 100.5 (atr_bounce fails)
+        $candles[] = $this->candle(100.1, 100.8, 100.0, 100.3, 120.0);
 
         $n = count($candles);
-        $ema8 = array_fill(0, $n, 95.0);
-        // ema8 is flat (95.0), close (100.3) < open (100.5) -> bullish_confirmation fails
-        $ema50 = array_fill(0, $n, 90.0); // price (100.1) > ema50 (90)
+        $ema8 = array_fill(0, $n, 95.0); // flat EMA8 -> strict_trend fails
+        $ema50 = array_fill(0, $n, 90.0);
 
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
@@ -161,11 +156,11 @@ class BounceStrategyTest extends TestCase
         $diag = $strategy->diagnose($ctx, $planner);
 
         $this->assertNotNull($diag);
-        $this->assertEquals(77.78, $diag->score);
+        $this->assertFalse($diag->criteria['strict_trend']->passed);
 
+        // evaluate MUST reject entry because Hard filter strict_trend failed
         $signal = $strategy->evaluate($ctx, $planner);
-        $this->assertNotNull($signal);
-        $this->assertSame(Direction::Long, $signal->direction);
+        $this->assertNull($signal);
     }
 
     public function test_bounce_rejects_entry_when_hard_filter_normal_atr_fails(): void
@@ -299,27 +294,28 @@ class BounceStrategyTest extends TestCase
         $atr = 5.0;
         $level = 100.0;
 
-        // Create a 75% score setup (6 out of 8 criteria pass)
+        // Create an 88.89% score setup (8 out of 9 criteria pass, atr_bounce fails)
         $candles = $this->baseline(10, 108.0, 103.0);
         $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0);
         $candles[] = $this->candle(100.1, 100.8, 100.0, 100.3, 120.0); // close > open (bullish)
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);
+        $ema8[$n - 1] = 96.0; // rising -> strict_trend passes
         $ema50 = array_fill(0, $n, 90.0);
 
         $planner = new TradePlanner(['tp_percent' => 0.35]);
 
         $strategy = new BounceStrategy(
-            minEntryScore: 75.0,
-            symbolMinEntryScores: ['DOGE-USDT' => 85.0]
+            minEntryScore: 80.0,
+            symbolMinEntryScores: ['DOGE-USDT' => 95.0]
         );
 
-        // ADA-USDT uses standard 75.0% threshold -> allowed
+        // ADA-USDT uses standard 80.0% threshold -> allowed (score is 88.89%)
         $adaCtx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $this->assertNotNull($strategy->evaluate($adaCtx, $planner));
 
-        // DOGE-USDT requires 85.0% threshold -> blocked because score is 75.0%
+        // DOGE-USDT requires 95.0% threshold -> blocked because score is 88.89%
         $dogeCtx = $this->createContext($candles, $level, $atr, 'DOGE-USDT', $ema8, $ema50);
         $this->assertNull($strategy->evaluate($dogeCtx, $planner));
     }

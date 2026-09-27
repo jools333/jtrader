@@ -278,6 +278,7 @@ final class BounceStrategy implements EntryStrategyInterface
             'volume_surge' => $passedVolumeSurge,
             'level_approach' => $passedApproach,
             'entry_zone' => $passedEntryZone,
+            'strict_trend' => $passedTrend,
             'bullish_confirmation' => $passedBullish,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
@@ -511,6 +512,7 @@ final class BounceStrategy implements EntryStrategyInterface
             'volume_surge' => $passedVolumeSurge,
             'level_approach' => $passedApproach,
             'entry_zone' => $passedEntryZone,
+            'strict_trend' => $passedTrend,
             'bearish_confirmation' => $passedBearish,
         ];
         $allHardPassed = ! in_array(false, $hardFilters, true);
