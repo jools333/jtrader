@@ -41,8 +41,8 @@ final class EntryGuard
 
         // 2. Порог максимального удаления цены от уровня (только для стратегий от уровней)
         if ($signalType !== SignalType::BtcLeadLag) {
-            $maxAtrTravel = (float) ($this->config['max_atr_travel'] ?? 0.60);
-            // Если цена уже ушла дальше 60% ATR от уровня — вход блокируется
+            $maxAtrTravel = (float) ($this->config['max_atr_travel'] ?? 0.70);
+            // Если цена уже ушла дальше 70% ATR от уровня — вход блокируется
             if ($ctx->atrTravelFraction() > $maxAtrTravel) {
                 return false;
             }
@@ -65,8 +65,8 @@ final class EntryGuard
             $btcFilterEnabled = (bool) ($this->config['btc_filter_enabled'] ?? true);
             if ($btcFilterEnabled) {
                 $btcRet3 = $ctx->btcReturnPct(3);
-                $maxDump = (float) ($this->config['btc_max_dump_percent'] ?? 0.20);
-                $maxPump = (float) ($this->config['btc_max_pump_percent'] ?? 0.20);
+                $maxDump = (float) ($this->config['btc_max_dump_percent'] ?? 0.30);
+                $maxPump = (float) ($this->config['btc_max_pump_percent'] ?? 0.30);
 
                 // Для импульсной стратегии BTC Lead-Lag: проверяем только прямое противоречие движению BTC
                 if ($signalType === SignalType::BtcLeadLag) {

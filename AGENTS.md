@@ -101,21 +101,21 @@ Trading logic is located in `app/Trading/`:
 - **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window.
 - **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector with dual-layer Hard/Soft criteria:
   - **Hard Filters (100% strictly mandatory risk safeguards, failure blocks entry immediately)**:
-    1. *Level Approach (`level_approach`)*: local extreme within $[L - 0.75 \times \text{ATR}, L + 0.75 \times \text{ATR}]$. Price MUST actually test the support/resistance level.
-    2. *Entry Zone (`entry_zone`)*: entry close within $0.50 \times \text{ATR}$ of key level. Prevents chasing price after it already dumped to the floor or pumped to the peak.
+    1. *Level Approach (`level_approach`)*: local extreme within $[L - 0.85 \times \text{ATR}, L + 0.85 \times \text{ATR}]$. Price MUST actually test the support/resistance level.
+    2. *Entry Zone (`entry_zone`)*: entry close within $0.65 \times \text{ATR}$ of key level. Prevents chasing price after it already dumped to the floor or pumped to the peak.
     3. *Directional Confirmation Candle (`bullish_confirmation` / `bearish_confirmation`)*: trigger candle matches direction (Close >= Open for LONG, Close <= Open for SHORT) or EMA8 confirms. Prevents shorting on green candles or longing on red candles.
     4. *Normal Volatility (`normal_atr`)*: ATR $> 0.20\%$ of current price (prevents entries in dead flat markets).
     5. *Anti-Climax Breakdown Protection (`no_climax`)*: no breakdown climax candle ($V \ge 2.2 \times V_{\text{avg}}$ with body $\ge 0.40 \times \text{ATR}$ closing at the extreme) in the approach.
     6. *Anti-Chasing Protection (`no_chasing`)*: trigger candle body $< 0.60 \times \text{ATR}$.
-    7. *Volume Surge (`volume_surge`)*: trigger candle volume $\ge 1.15 \times V_{\text{avg}}$.
+    7. *Volume Surge (`volume_surge`)*: trigger candle volume $\ge 1.05 \times V_{\text{avg}}$.
     8. *Trend Alignment (`strict_trend`)*: EMA8 slope confirms direction (rising for LONG, falling for SHORT) AND price beyond EMA50. Completely eliminates counter-trend knife-catching and top-shorting into strong momentum.
   - **Soft Price Action Criterion (1 scored condition)**:
     1. *ATR Bounce (`atr_bounce`)*: bounce $\ge 0.10 \times \text{ATR}$ from local extreme.
   - *Entry Rule*: All 8 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 80.0% = at least 8/9 criteria).
 - **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
   - `BTC-USDT` is excluded from opening positions (`config('trading.excluded_symbols')`), but streams via WebSocket for market regime analysis.
-  - Altcoin LONG entries are blocked if BTC drops $> 0.20\%$ over 3 bars OR if BTC is in a macro downtrend (`BTC price < EMA50` AND `BTC EMA8 < EMA21`).
-  - Altcoin SHORT entries are blocked if BTC pumps $> 0.20\%$ over 3 bars OR if BTC is in a macro uptrend (`BTC price > EMA50` AND `BTC EMA8 > EMA21`).
+  - Altcoin LONG entries are blocked if BTC drops $> 0.30\%$ over 3 bars OR if BTC is in a macro downtrend (`BTC price < EMA50` AND `BTC EMA8 < EMA21`).
+  - Altcoin SHORT entries are blocked if BTC pumps $> 0.30\%$ over 3 bars OR if BTC is in a macro uptrend (`BTC price > EMA50` AND `BTC EMA8 > EMA21`).
 - **BTC Lead-Lag Fast Exit (`EarlyReversalStrategy`, `ExitReason::BtcReversal`)**:
   - Detects sharp BTC counter-impulses ($\ge 0.35\%$ drop for LONG or $\ge 0.35\%$ pump for SHORT over 2 bars) and executes immediate market exit on altcoins before they follow BTC down.
 - **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`, `BingXPositionSyncService`)**:
