@@ -139,7 +139,7 @@ final class EntryGuard
                     if (!empty($htfCandles) && count($htfCandles) >= 50) {
                         $htfCandles = array_values($htfCandles);
                         $closes = array_map(static fn ($c) => $c->close, $htfCandles);
-                        $ema50 = \App\Trading\Analysis\Support\SeriesMath::ema($closes, 50);
+                        $ema50 = \App\Market\Analysis\Support\SeriesMath::ema($closes, 50);
                         if (!empty($ema50)) {
                             $lastEma50 = end($ema50);
                             $lastPrice = end($htfCandles)->close;
