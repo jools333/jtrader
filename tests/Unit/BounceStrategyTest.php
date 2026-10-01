@@ -146,8 +146,8 @@ class BounceStrategyTest extends TestCase
         $candles[] = $this->candle(100.1, 100.8, 100.0, 100.3, 120.0);
 
         $n = count($candles);
-        $ema8 = array_fill(0, $n, 95.0); // flat EMA8 -> strict_trend fails
-        $ema50 = array_fill(0, $n, 90.0);
+        $ema8 = array_fill(0, $n, 95.0); // flat EMA8 -> not rising
+        $ema50 = array_fill(0, $n, 105.0); // price (100.3) < ema50 (105.0) -> strict_trend fails
 
         $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
         $planner = new TradePlanner(['tp_percent' => 0.35]);
@@ -196,10 +196,10 @@ class BounceStrategyTest extends TestCase
         $level = 100.0;
         $atr = 5.0;
 
-        // 3 criteria fail: entry_zone (close 106 > 104.25), volume (100 < 115), trend (falling EMA8, below EMA50)
+        // 3 criteria fail: entry_zone (close 106 > 104.25), volume (80 < 90), trend (falling EMA8, below EMA50)
         $candles = $this->baseline(10, 105.0, 100.5);
         $candles[] = $this->candle(100.5, 101.0, 99.8, 100.2, 100.0);
-        $candles[] = $this->candle(100.2, 106.5, 100.0, 106.0, 100.0);
+        $candles[] = $this->candle(100.2, 106.5, 100.0, 106.0, 80.0);
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);

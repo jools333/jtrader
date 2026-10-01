@@ -84,12 +84,12 @@ final class EntryGuard
                             return false;
                         }
                         // Или если краткосрочный тренд BTC падает и находится ниже EMA50
-                        if ($ctx->btcEma8Falling() === true && $ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcLastPrice() < $ctx->btcEma50()) {
+                        if ($ctx->btcEma8Falling() === true && $btcRet3 !== null && $btcRet3 < -0.10 && $ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcLastPrice() < $ctx->btcEma50()) {
                             return false;
                         }
-                        // Макро-режим: блокируем LONG, если BTC находится в устойчивом медвежьем тренде (цена ниже EMA50 и EMA8 < EMA21)
+                        // Макро-режим: блокируем LONG, если BTC находится в устойчивом медвежьем тренде (цена ниже EMA50 и EMA8 < EMA21) и продолжает падать
                         if ($ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcEma8() !== null && $ctx->btcEma21() !== null) {
-                            if ($ctx->btcLastPrice() < $ctx->btcEma50() && $ctx->btcEma8() < $ctx->btcEma21()) {
+                            if ($ctx->btcLastPrice() < $ctx->btcEma50() && $ctx->btcEma8() < $ctx->btcEma21() && ($btcRet3 !== null && $btcRet3 < -0.10)) {
                                 return false;
                             }
                         }
@@ -99,12 +99,12 @@ final class EntryGuard
                             return false;
                         }
                         // Или если краткосрочный тренд BTC растет и находится выше EMA50
-                        if ($ctx->btcEma8Rising() === true && $ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcLastPrice() > $ctx->btcEma50()) {
+                        if ($ctx->btcEma8Rising() === true && $btcRet3 !== null && $btcRet3 > 0.10 && $ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcLastPrice() > $ctx->btcEma50()) {
                             return false;
                         }
-                        // Макро-режим: блокируем SHORT, если BTC находится в устойчивом бычьем тренде (цена выше EMA50 и EMA8 > EMA21)
+                        // Макро-режим: блокируем SHORT, если BTC находится в устойчивом бычьем тренде (цена выше EMA50 и EMA8 > EMA21) и продолжает расти
                         if ($ctx->btcLastPrice() !== null && $ctx->btcEma50() !== null && $ctx->btcEma8() !== null && $ctx->btcEma21() !== null) {
-                            if ($ctx->btcLastPrice() > $ctx->btcEma50() && $ctx->btcEma8() > $ctx->btcEma21()) {
+                            if ($ctx->btcLastPrice() > $ctx->btcEma50() && $ctx->btcEma8() > $ctx->btcEma21() && ($btcRet3 !== null && $btcRet3 > 0.10)) {
                                 return false;
                             }
                         }
@@ -115,14 +115,15 @@ final class EntryGuard
 
         // 4. Старший межрыночный фильтр BTC (BTC Higher Timeframe Regime: 1h)
         if ($direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcHtfData()) {
-            $btcHtfFilterEnabled = (bool) ($this->config['btc_htf_filter_enabled'] ?? true);
+            $btcHtfFilterEnabled = (bool) ($this->config['btc_htf_filter_enabled'] ?? false);
             if ($btcHtfFilterEnabled) {
-                // Блокируем LONG по альтам, если BTC на старшем таймфрейме в нисходящем тренде
-                if ($direction === Direction::Long && $ctx->btcHtfTrendBearish()) {
+                $btcRet3 = $ctx->btcReturnPct(3) ?? 0.0;
+                // Блокируем LONG по альтам, если BTC на старшем таймфрейме в нисходящем тренде и продолжает падать
+                if ($direction === Direction::Long && $ctx->btcHtfTrendBearish() && ($btcRet3 < -0.05 || $ctx->btcEma8Falling() === true)) {
                     return false;
                 }
-                // Блокируем SHORT по альтам, если BTC на старшем таймфрейме в восходящем тренде
-                if ($direction === Direction::Short && $ctx->btcHtfTrendBullish()) {
+                // Блокируем SHORT по альтам, если BTC на старшем таймфрейме в восходящем тренде и продолжает расти
+                if ($direction === Direction::Short && $ctx->btcHtfTrendBullish() && ($btcRet3 > 0.05 || $ctx->btcEma8Rising() === true)) {
                     return false;
                 }
             }
@@ -131,7 +132,7 @@ final class EntryGuard
 
         // 5. Старший таймфрейм самого альткоина (Altcoin HTF Regime: 1h)
         if ($direction !== null && $ctx->symbol !== 'BTC-USDT') {
-            $altHtfFilterEnabled = (bool) ($this->config['alt_htf_filter_enabled'] ?? true);
+            $altHtfFilterEnabled = (bool) ($this->config['alt_htf_filter_enabled'] ?? false);
             if ($altHtfFilterEnabled) {
                 try {
                     $repo = app(\App\Market\Repositories\CandleRepository::class);

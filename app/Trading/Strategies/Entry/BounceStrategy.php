@@ -26,14 +26,14 @@ final class BounceStrategy implements EntryStrategyInterface
      */
     public function __construct(
         private readonly ?StrategyLoggerInterface $logger = null,
-        private readonly float $minEntryScore = 80.0,
+        private readonly float $minEntryScore = 75.0,
         private readonly int $lookbackCandles = 10,
         private readonly float $levelApproachAtr = 0.85,
         private readonly float $bounceReversalAtr = 0.10,
         private readonly float $minAtrPercent = 0.20,
         private readonly float $stopBufferAtr = 0.25,
         private readonly float $entryZoneAtr = 0.65,
-        private readonly float $volumeMultiplier = 1.05,
+        private readonly float $volumeMultiplier = 0.90,
         private readonly float $climaxVolumeMultiplier = 2.21,
         private readonly array $symbolMinEntryScores = [],
     ) {}
@@ -142,14 +142,14 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
-        // 4. Строгий фильтр тренда для LONG (EMA8 должна расти, цена выше EMA50)
-        $passedTrend = $ctx->ema8Rising() && $last->close > $ctx->ema50At($ctx->i);
+        // 4. Строгий фильтр тренда для LONG (EMA8 должна расти или цена выше EMA50)
+        $passedTrend = $ctx->ema8Rising() || $last->close > $ctx->ema50At($ctx->i);
 
         $criteria['strict_trend'] = new CriterionResult(
             key: 'strict_trend',
-            name: 'Тренд вверх (EMA8 растет, цена > EMA50)',
+            name: 'Тренд вверх (EMA8 растет или цена > EMA50)',
             passed: $passedTrend,
-            expected: 'EMA8 растет, цена > EMA50',
+            expected: 'EMA8 растет или цена > EMA50',
             actual: sprintf(
                 'EMA8 Rising: %s, Price %.4f vs EMA50 %.4f',
                 $ctx->ema8Rising() ? 'Yes' : 'No',
@@ -376,14 +376,14 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
-        // 4. Строгий фильтр тренда для SHORT (EMA8 должна падать, цена ниже EMA50)
-        $passedTrend = $ctx->ema8Falling() && $last->close < $ctx->ema50At($ctx->i);
+        // 4. Строгий фильтр тренда для SHORT (EMA8 должна падать или цена ниже EMA50)
+        $passedTrend = $ctx->ema8Falling() || $last->close < $ctx->ema50At($ctx->i);
 
         $criteria['strict_trend'] = new CriterionResult(
             key: 'strict_trend',
-            name: 'Тренд вниз (EMA8 падает, цена < EMA50)',
+            name: 'Тренд вниз (EMA8 падает или цена < EMA50)',
             passed: $passedTrend,
-            expected: 'EMA8 падает, цена < EMA50',
+            expected: 'EMA8 падает или цена < EMA50',
             actual: sprintf(
                 'EMA8 Falling: %s, Price %.4f vs EMA50 %.4f',
                 $ctx->ema8Falling() ? 'Yes' : 'No',

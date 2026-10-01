@@ -84,17 +84,17 @@ class EntryGuardTest extends TestCase
             'btc_htf_filter_enabled' => true,
         ]);
 
-        // On 5m BTC made a slight local bounce, so 5m return is positive
-        $btc5m = [$this->candle(78000), $this->candle(78100), $this->candle(78200)];
-        // On 1h BTC is 78200, but EMA50 is 79000 (bearish macro regime)
-        $btcHtf = [$this->candle(78000), $this->candle(78100), $this->candle(78200)];
+        // On 5m BTC is falling (return is negative)
+        $btc5m = [$this->candle(78200), $this->candle(78100), $this->candle(78000)];
+        // On 1h BTC is 78000, but EMA50 is 79000 (bearish macro regime)
+        $btcHtf = [$this->candle(78200), $this->candle(78100), $this->candle(78000)];
 
         $ctx = $this->createContext(
             btcCandles: $btc5m,
             btcHtfCandles: $btcHtf,
-            btcHtfEma8: [78000.0, 78100.0, 78150.0],
-            btcHtfEma21: [78200.0, 78150.0, 78100.0],
-            btcHtfEma50: [79000.0, 79000.0, 79000.0], // Price 78200 < EMA50 79000
+            btcHtfEma8: [78200.0, 78100.0, 78000.0],
+            btcHtfEma21: [78300.0, 78200.0, 78100.0],
+            btcHtfEma50: [79000.0, 79000.0, 79000.0], // Price 78000 < EMA50 79000
         );
 
         // LONG must be BLOCKED!
@@ -108,8 +108,8 @@ class EntryGuardTest extends TestCase
             'btc_htf_filter_enabled' => true,
         ]);
 
-        // On 5m BTC pulled back slightly, so 5m return is negative
-        $btc5m = [$this->candle(81000), $this->candle(80950), $this->candle(80900)];
+        // On 5m BTC is rising (return is positive)
+        $btc5m = [$this->candle(80800), $this->candle(80850), $this->candle(80900)];
         // On 1h BTC is 80900, but EMA50 is 79000 (bullish macro regime)
         $btcHtf = [$this->candle(80800), $this->candle(80850), $this->candle(80900)];
 

@@ -83,9 +83,9 @@ return [
     |--------------------------------------------------------------------------
     */
     'agent' => [
-        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 80.0),
+        'min_entry_score' => (float) env('TRADING_MIN_ENTRY_SCORE', 75.0),
         'symbol_min_entry_score' => [
-            'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 80.0),
+            'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 75.0),
         ],
         'min_rr' => (float) env('TRADING_MIN_RR', 1.5),          // reject entries with reward:risk below this
         'max_atr_travel' => (float) env('TRADING_MAX_ATR_TRAVEL', 0.70), // skip if price ran > 70% of ATR off the level
@@ -98,8 +98,9 @@ return [
 
         // BTC Anchor (межрыночный фильтр)
         'btc_filter_enabled' => (bool) env('TRADING_BTC_FILTER_ENABLED', true),
-        'btc_htf_filter_enabled' => (bool) env('TRADING_BTC_HTF_FILTER_ENABLED', true), // фильтр старшего таймфрейма BTC
+        'btc_htf_filter_enabled' => (bool) env('TRADING_BTC_HTF_FILTER_ENABLED', false), // фильтр старшего таймфрейма BTC
         'btc_htf_interval' => env('TRADING_BTC_HTF_INTERVAL', '1h'), // таймфрейм для анализа старшего тренда BTC (1h)
+        'alt_htf_filter_enabled' => (bool) env('TRADING_ALT_HTF_FILTER_ENABLED', false), // фильтр старшего таймфрейма самого альткоина
         'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.30), // макс допустимый дамп BTC за 3 свечи для входа в LONG
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.30), // макс допустимый памп BTC за 3 свечи для входа в SHORT
         'btc_storm_filter_enabled' => (bool) env('TRADING_BTC_STORM_FILTER_ENABLED', true), // блокировка входов при высокой абсолютной волатильности BTC
@@ -117,7 +118,7 @@ return [
         'bounce_reversal_atr' => env('TRADING_BOUNCE_REVERSAL_ATR', 0.20),    // Требуемый отскок от экстремума (в ATR)
         'bounce_min_atr_percent' => 0.20, // Минимальный ATR в процентах от цены
         'bounce_stop_atr_buffer' => (float) env('TRADING_BOUNCE_STOP_ATR_BUFFER', 0.25), // Буфер стоп-лосса за уровнем/экстремумом (в ATR)
-        'bounce_volume_multiplier' => (float) env('TRADING_BOUNCE_VOLUME_MULT', 1.05), // Мин. всплеск объема на триггерной свече отскока
+        'bounce_volume_multiplier' => (float) env('TRADING_BOUNCE_VOLUME_MULT', 0.90), // Мин. объем на триггерной свече отскока (0.90x от среднего)
         'bounce_climax_volume_mult' => (float) env('TRADING_BOUNCE_CLIMAX_MULT', 2.20), // Порог кульминации пробоя (падающий нож)
         
         // Настройки ордеров входа, тейк-профита, комиссий и защитного стопа
