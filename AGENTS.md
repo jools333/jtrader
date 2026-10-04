@@ -233,4 +233,12 @@ Real trade statistics (positions, PnL) should be checked on the production serve
        - Implemented Price-Based Exit Inference: added `inferExitReasonFromPrice()` in `BingXPositionSyncService` to accurately classify MARKET fills into `take_profit_hit`, `stop_loss_hit`, `trailing_stop`, or `break_even` by comparing fill price against level brackets.
        - Repaired Historical DB: ran `positions:backfill-exit-reason`, backfilling 346 positions with 0 NULL records remaining.
        - Rebuilt production config cache and restarted `queue`, `scheduler`, and `ws` containers.
-
+- **2026-10-01 – 2026-10-04**:
+  - *Calibration*: Lowered `min_entry_score` to 75%, volume to 0.90x, relaxed `strict_trend` to OR-logic, and conditioned BTC HTF on active momentum.
+  - *Account Equity*: Grew from **89,767.04 VST** to **89,811.87 VST** (**+$44.83 VST net profit**, +0.05% portfolio return).
+  - *Verified Trades*: 3 trades, **3/3 wins (100% Win Rate)**:
+    - #585 SOL-USDT SHORT (01.10 23:29 MSK): 50% TP1 (+14.06) + remaining BE (-1.49), Net: **+$9.50 USDT**.
+    - #586 LINK-USDT SHORT (02.10 10:07 MSK): 50% TP1 (+9.60) + 50% Trailing (+10.92), Net: **+$17.39 USDT**.
+    - #587 XRP-USDT LONG (02.10 23:52 MSK): 100% TP1 (+21.11), Net: **+$17.96 USDT**.
+  - *Total PnL*: Realized: **+$54.19 USDT**, Commissions: **-$9.43 USDT**, Funding: **+$0.07 USDT**, **Net PnL: +$44.83 USDT**.
+  - *Weekend Note*: 0 trades on Oct 3–4 due to weekend low ATR and volume drops (<0.90x avg), with safety filters properly preventing choppy chop losses.
