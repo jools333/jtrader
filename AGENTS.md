@@ -242,3 +242,12 @@ Real trade statistics (positions, PnL) should be checked on the production serve
     - #587 XRP-USDT LONG (02.10 23:52 MSK): 100% TP1 (+21.11), Net: **+$17.96 USDT**.
   - *Total PnL*: Realized: **+$54.19 USDT**, Commissions: **-$9.43 USDT**, Funding: **+$0.07 USDT**, **Net PnL: +$44.83 USDT**.
   - *Weekend Note*: 0 trades on Oct 3–4 due to weekend low ATR and volume drops (<0.90x avg), with safety filters properly preventing choppy chop losses.
+- **2026-10-05 – 2026-10-06**:
+  - *Account Equity*: **89,778.20 VST** (still net positive **+$11.16 VST** above pre-calibration baseline of 89,767.04 VST).
+  - *Verified Trades*: 3 trades on Monday Oct 05, **0/3 wins**:
+    - #588 ADA-USDT LONG (05.10 08:28 MSK): Stop Loss hit @ 0.2713 (loss: -$17.29, fee: -$3.14), Net: **-$20.43 USDT**.
+    - #589 DOGE-USDT SHORT (05.10 13:34 MSK): Ultra-tight SL hit @ 0.0962 (+0.12% move, loss: -$2.81, fee: -$2.25), Net: **-$5.05 USDT**.
+    - #590 XRP-USDT SHORT (05.10 17:34 MSK): Ultra-tight SL hit @ 1.4966 (+0.16% move, loss: -$5.05, fee: -$3.14), Net: **-$8.19 USDT**.
+  - *Total PnL (Oct 05)*: Realized: **-$25.14 USDT**, Commissions: **-$8.53 USDT**, **Net PnL: -$33.67 USDT**.
+  - *Cumulative Since Calibration (Oct 01 – Oct 06)*: 6 trades, **3/6 wins (50.0% Win Rate)**, Realized: **+$29.05 USDT**, Fees: **-$17.96 USDT**, Funding: **+$0.07 USDT**, **Net PnL: +$11.16 USDT**.
+  - *Risk Observations*: Micro-losses on DOGE (-$5.05) and XRP (-$8.19) confirm that technical stops and size caps strictly prevent large drawdowns, while day staggering prevented clustering.
