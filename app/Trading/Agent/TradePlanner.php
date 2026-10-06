@@ -68,16 +68,17 @@ final class TradePlanner
                 : ($entry * $stopPct);
         }
 
-        // Защита: жесткий максимальный потолок стоп-лосса (по умолчанию не более 1.2% от цены входа)
-        $maxStopPct = $this->cfg('max_stop_percent', 1.2) / 100.0;
+        // Минимальная дистанция стопа для защиты от 1-минутного шума и комиссий (по умолчанию не менее 0.40% от цены)
+        $minStopPct = $this->cfg('min_stop_percent', 0.40) / 100.0;
+        $minStopDistance = $entry * $minStopPct;
+        $stopDistance = max($stopDistance, $minStopDistance);
+
+        // Защита: жесткий максимальный потолок стоп-лосса (по умолчанию не более 1.1% от цены входа)
+        $maxStopPct = $this->cfg('max_stop_percent', 1.1) / 100.0;
         $maxStopDistance = $entry * $maxStopPct;
         if ($maxStopDistance > 0.0) {
             $stopDistance = min($stopDistance, $maxStopDistance);
         }
-
-        // Минимальная дистанция стопа от микро-значений (0.1% от цены)
-        $minStopDistance = $entry * 0.001;
-        $stopDistance = max($stopDistance, $minStopDistance);
 
         $tpMode = (string) ($this->config['tp_mode'] ?? 'quick');
         $target1R = (float) $this->cfg('target1_r', 2.0);

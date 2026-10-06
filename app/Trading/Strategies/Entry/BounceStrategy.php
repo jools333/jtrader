@@ -142,17 +142,18 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
-        // 4. Строгий фильтр тренда для LONG (EMA8 должна расти или цена выше EMA50)
-        $passedTrend = $ctx->ema8Rising() || $last->close > $ctx->ema50At($ctx->i);
+        // 4. Строгий фильтр тренда для LONG (EMA8 должна расти или цена выше EMA50 без падения EMA8)
+        $passedTrend = $ctx->ema8Rising() || ($last->close > $ctx->ema50At($ctx->i) && ! $ctx->ema8Falling());
 
         $criteria['strict_trend'] = new CriterionResult(
             key: 'strict_trend',
-            name: 'Тренд вверх (EMA8 растет или цена > EMA50)',
+            name: 'Тренд вверх (EMA8 растет или цена > EMA50 без падения EMA8)',
             passed: $passedTrend,
-            expected: 'EMA8 растет или цена > EMA50',
+            expected: 'EMA8 растет или цена > EMA50 без падения EMA8',
             actual: sprintf(
-                'EMA8 Rising: %s, Price %.4f vs EMA50 %.4f',
+                'EMA8 Rising: %s, EMA8 Falling: %s, Price %.4f vs EMA50 %.4f',
                 $ctx->ema8Rising() ? 'Yes' : 'No',
+                $ctx->ema8Falling() ? 'Yes' : 'No',
                 $last->close,
                 $ctx->ema50At($ctx->i)
             ),
@@ -179,20 +180,54 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня поддержки (вход на пике)';
         }
 
-        // 6. Подтверждение бычьей свечой (закрытие выше открытия или EMA8 растет)
-        $passedBullish = $last->close >= $last->open || $ctx->ema8Rising();
+        // 6. Подтверждение отскока: зеленая свеча (Close >= Open) или бычий пин-бар с длинным нижним фитилем
+        $body = abs($last->close - $last->open);
+        $lowerWick = min($last->open, $last->close) - $last->low;
+        $isHammer = ($lowerWick >= $body * 1.5) && ($lowerWick >= $atr * 0.15);
+        $isGreen = $last->close >= $last->open;
+
+        // Защита от безоткатного моментум-дампа: если последние 4 свечи подряд были красными с падением >= 0.40%
+        $cnt = count($window);
+        $priorBars = array_slice($window, max(0, $cnt - 5), 4);
+        $consecutiveRed = 0;
+        for ($k = count($priorBars) - 1; $k >= 0; $k--) {
+            if ($priorBars[$k]->close < $priorBars[$k]->open) {
+                $consecutiveRed++;
+            } else {
+                break;
+            }
+        }
+        $isHeavyDownRun = false;
+        if ($consecutiveRed >= 4 && count($priorBars) >= 4) {
+            $firstInRun = $priorBars[count($priorBars) - $consecutiveRed];
+            $runDropPct = ($firstInRun->open - $last->low) / $firstInRun->open * 100.0;
+            $isHeavyDownRun = ($runDropPct >= 0.40);
+        }
+
+        if ($isHeavyDownRun) {
+            $passedBullish = ($isGreen && ($last->close - $last->open) >= $atr * 0.15) || $isHammer;
+        } else {
+            $passedBullish = $isGreen || $isHammer;
+        }
 
         $criteria['bullish_confirmation'] = new CriterionResult(
             key: 'bullish_confirmation',
-            name: 'Подтверждение отскока (зеленая свеча или EMA8 растет)',
+            name: 'Подтверждение отскока (зеленая свеча или бычий пин-бар)',
             passed: $passedBullish,
-            expected: 'Close >= Open или EMA8 растет',
-            actual: sprintf('Close %.4f vs Open %.4f, EMA8 Rising: %s', $last->close, $last->open, $ctx->ema8Rising() ? 'Yes' : 'No'),
+            expected: 'Close >= Open или пин-бар (нижний фитиль >= 1.5x тела)',
+            actual: sprintf(
+                'Close %.4f vs Open %.4f (Зеленая: %s, Пин-бар: %s, Моментум-дамп: %s)',
+                $last->close,
+                $last->open,
+                $isGreen ? 'Yes' : 'No',
+                $isHammer ? 'Yes' : 'No',
+                $isHeavyDownRun ? 'Yes' : 'No'
+            ),
             actualValue: $last->close,
             thresholdValue: $last->open,
         );
         if (! $passedBullish) {
-            $missing[] = 'Нет подтверждения разворота вверх (медвежья свеча)';
+            $missing[] = 'Нет подтверждения разворота вверх (медвежья свеча без фитиля)';
         }
 
         // 7. Отсутствие кульминации пробоя / падающего ножа (Hard filter)
@@ -376,17 +411,18 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Слишком маленький ATR';
         }
 
-        // 4. Строгий фильтр тренда для SHORT (EMA8 должна падать или цена ниже EMA50)
-        $passedTrend = $ctx->ema8Falling() || $last->close < $ctx->ema50At($ctx->i);
+        // 4. Строгий фильтр тренда для SHORT (EMA8 должна падать или цена ниже EMA50 без роста EMA8)
+        $passedTrend = $ctx->ema8Falling() || ($last->close < $ctx->ema50At($ctx->i) && ! $ctx->ema8Rising());
 
         $criteria['strict_trend'] = new CriterionResult(
             key: 'strict_trend',
-            name: 'Тренд вниз (EMA8 падает или цена < EMA50)',
+            name: 'Тренд вниз (EMA8 падает или цена < EMA50 без роста EMA8)',
             passed: $passedTrend,
-            expected: 'EMA8 падает или цена < EMA50',
+            expected: 'EMA8 падает или цена < EMA50 без роста EMA8',
             actual: sprintf(
-                'EMA8 Falling: %s, Price %.4f vs EMA50 %.4f',
+                'EMA8 Falling: %s, EMA8 Rising: %s, Price %.4f vs EMA50 %.4f',
                 $ctx->ema8Falling() ? 'Yes' : 'No',
+                $ctx->ema8Rising() ? 'Yes' : 'No',
                 $last->close,
                 $ctx->ema50At($ctx->i)
             ),
@@ -413,20 +449,54 @@ final class BounceStrategy implements EntryStrategyInterface
             $missing[] = 'Цена ушла слишком далеко от уровня сопротивления (вход на дне)';
         }
 
-        // 6. Подтверждение медвежьей свечой (закрытие ниже открытия или EMA8 падает)
-        $passedBearish = $last->close <= $last->open || $ctx->ema8Falling();
+        // 6. Подтверждение отскока: красная свеча (Close <= Open) или падающая звезда с длинным верхним фитилем
+        $body = abs($last->close - $last->open);
+        $upperWick = $last->high - max($last->open, $last->close);
+        $isShootingStar = ($upperWick >= $body * 1.5) && ($upperWick >= $atr * 0.15);
+        $isRed = $last->close <= $last->open;
+
+        // Защита от безоткатного моментум-пампа: если последние 4 свечи подряд были зелеными с ростом >= 0.40%
+        $cnt = count($window);
+        $priorBars = array_slice($window, max(0, $cnt - 5), 4);
+        $consecutiveGreen = 0;
+        for ($k = count($priorBars) - 1; $k >= 0; $k--) {
+            if ($priorBars[$k]->close > $priorBars[$k]->open) {
+                $consecutiveGreen++;
+            } else {
+                break;
+            }
+        }
+        $isHeavyUpRun = false;
+        if ($consecutiveGreen >= 4 && count($priorBars) >= 4) {
+            $firstInRun = $priorBars[count($priorBars) - $consecutiveGreen];
+            $runPumpPct = ($last->high - $firstInRun->open) / $firstInRun->open * 100.0;
+            $isHeavyUpRun = ($runPumpPct >= 0.40);
+        }
+
+        if ($isHeavyUpRun) {
+            $passedBearish = ($isRed && ($last->open - $last->close) >= $atr * 0.15) || $isShootingStar;
+        } else {
+            $passedBearish = $isRed || $isShootingStar;
+        }
 
         $criteria['bearish_confirmation'] = new CriterionResult(
             key: 'bearish_confirmation',
-            name: 'Подтверждение отскока (красная свеча или EMA8 падает)',
+            name: 'Подтверждение отскока (красная свеча или падающая звезда)',
             passed: $passedBearish,
-            expected: 'Close <= Open или EMA8 падает',
-            actual: sprintf('Close %.4f vs Open %.4f, EMA8 Falling: %s', $last->close, $last->open, $ctx->ema8Falling() ? 'Yes' : 'No'),
+            expected: 'Close <= Open или падающая звезда (верхний фитиль >= 1.5x тела)',
+            actual: sprintf(
+                'Close %.4f vs Open %.4f (Красная: %s, Падающая звезда: %s, Моментум-памп: %s)',
+                $last->close,
+                $last->open,
+                $isRed ? 'Yes' : 'No',
+                $isShootingStar ? 'Yes' : 'No',
+                $isHeavyUpRun ? 'Yes' : 'No'
+            ),
             actualValue: $last->close,
             thresholdValue: $last->open,
         );
         if (! $passedBearish) {
-            $missing[] = 'Нет подтверждения разворота вниз (бычья свеча)';
+            $missing[] = 'Нет подтверждения разворота вниз (бычья свеча без фитиля)';
         }
 
         // 7. Отсутствие кульминации пробоя / взлета в сопротивление (Hard filter)

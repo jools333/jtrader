@@ -111,7 +111,7 @@ class BounceStrategyTest extends TestCase
         // Result: 7/8 criteria pass = 87.5%, all Hard filters passed -> entry generated!
         $candles = $this->baseline(10, 108.0, 103.0);
         $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0); // minLow 100.0 in [96.25, 103.75]
-        $candles[] = $this->candle(100.5, 100.8, 100.1, 100.3, 150.0); // close 100.3 < 100.5 (atr_bounce fails), volume passes
+        $candles[] = $this->candle(100.2, 100.8, 100.1, 100.4, 150.0); // green candle (close 100.4 > open 100.2), but close 100.4 < 100.5 (atr_bounce fails)
 
         $n = count($candles);
         $ema8 = array_fill(0, $n, 95.0);
@@ -318,5 +318,122 @@ class BounceStrategyTest extends TestCase
         // DOGE-USDT requires 95.0% threshold -> blocked because score is 88.89%
         $dogeCtx = $this->createContext($candles, $level, $atr, 'DOGE-USDT', $ema8, $ema50);
         $this->assertNull($strategy->evaluate($dogeCtx, $planner));
+    }
+
+    public function test_bounce_long_rejects_entry_on_red_candle_without_hammer_wick(): void
+    {
+        $atr = 5.0;
+        $level = 100.0;
+
+        $candles = $this->baseline(10, 108.0, 103.0);
+        $candles[] = $this->candle(102.0, 102.5, 100.0, 100.5, 100.0);
+        // Red trigger candle: Open 100.5, Close 100.2, Low 100.1 (falling bar, tiny lower wick)
+        $candles[] = $this->candle(100.5, 100.6, 100.1, 100.2, 120.0);
+
+        $n = count($candles);
+        $ema8 = array_fill(0, $n, 95.0);
+        $ema8[$n - 1] = 96.0; // even though EMA8 is rising, red candle must NOT pass bullish_confirmation!
+        $ema50 = array_fill(0, $n, 90.0);
+
+        $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
+        $planner = new TradePlanner(['tp_percent' => 0.35]);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
+
+        $diag = $strategy->diagnose($ctx, $planner);
+        $this->assertFalse($diag->criteria['bullish_confirmation']->passed);
+        $this->assertNull($strategy->evaluate($ctx, $planner));
+    }
+
+    public function test_bounce_short_rejects_entry_when_ema8_is_rising(): void
+    {
+        $atr = 5.0;
+        $level = 100.0;
+
+        $candles = [];
+        for ($i = 0; $i < 10; $i++) {
+            $c = 95.0 + ($i % 2 == 0 ? 0.5 : -0.5);
+            $candles[] = $this->candle($c, $c + 1.0, $c - 1.0, $c + ($i % 2 == 0 ? -0.2 : 0.2), 100.0);
+        }
+        $candles[] = $this->candle(96.0, 100.0, 95.5, 99.5, 100.0);
+        $candles[] = $this->candle(99.8, 100.0, 98.8, 99.0, 120.0);
+
+        $n = count($candles);
+        // Price (99.3) < EMA50 (105.0), BUT EMA8 is actively rising (97.0 -> 99.0)
+        $ema8 = array_fill(0, $n, 97.0);
+        $ema8[$n - 1] = 99.0; // RISING EMA8
+        $ema50 = array_fill(0, $n, 105.0);
+
+        $ctx = $this->createContext($candles, $level, $atr, 'XRP-USDT', $ema8, $ema50);
+        $planner = new TradePlanner(['tp_percent' => 0.35]);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
+
+        $diag = $strategy->diagnose($ctx, $planner);
+        // strict_trend MUST fail because EMA8 is rising!
+        $this->assertFalse($diag->criteria['strict_trend']->passed);
+        $this->assertNull($strategy->evaluate($ctx, $planner));
+    }
+
+    public function test_bounce_short_rejects_entry_on_tiny_candle_after_heavy_momentum_pump(): void
+    {
+        $atr = 5.0;
+        $level = 100.0;
+
+        $candles = [];
+        for ($i = 0; $i < 6; $i++) {
+            $candles[] = $this->candle(90.0, 91.0, 89.5, 90.5, 100.0);
+        }
+        // 4 consecutive strong green candles pumping from 90.5 to 100.0 (+10.5% > 0.40%)
+        $candles[] = $this->candle(90.5, 93.0, 90.0, 92.8, 100.0);
+        $candles[] = $this->candle(92.8, 95.5, 92.5, 95.2, 100.0);
+        $candles[] = $this->candle(95.2, 98.0, 95.0, 97.8, 100.0);
+        $candles[] = $this->candle(97.8, 100.0, 97.5, 99.9, 100.0);
+        // Tiny red pause candle: Open 100.0, Close 99.95 (body 0.05 < 0.15 * ATR = 0.75, no shooting star wick)
+        $candles[] = $this->candle(100.0, 100.05, 99.9, 99.95, 120.0);
+
+        $n = count($candles);
+        $ema8 = array_fill(0, $n, 98.0);
+        $ema8[$n - 1] = 97.0; // Falling EMA8
+        $ema50 = array_fill(0, $n, 105.0);
+
+        $ctx = $this->createContext($candles, $level, $atr, 'XRP-USDT', $ema8, $ema50);
+        $planner = new TradePlanner(['tp_percent' => 0.35]);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
+
+        $diag = $strategy->diagnose($ctx, $planner);
+        // bearish_confirmation MUST fail because of heavy up run and tiny body!
+        $this->assertFalse($diag->criteria['bearish_confirmation']->passed);
+        $this->assertNull($strategy->evaluate($ctx, $planner));
+    }
+
+    public function test_bounce_long_rejects_entry_on_tiny_candle_after_heavy_momentum_dump(): void
+    {
+        $atr = 5.0;
+        $level = 100.0;
+
+        $candles = [];
+        for ($i = 0; $i < 6; $i++) {
+            $candles[] = $this->candle(110.0, 111.0, 109.5, 110.5, 100.0);
+        }
+        // 4 consecutive strong red candles dumping from 110.5 to 100.0 (-9.5% > 0.40%)
+        $candles[] = $this->candle(110.5, 111.0, 107.5, 107.8, 100.0);
+        $candles[] = $this->candle(107.8, 108.0, 105.0, 105.2, 100.0);
+        $candles[] = $this->candle(105.2, 105.5, 102.5, 102.8, 100.0);
+        $candles[] = $this->candle(102.8, 103.0, 100.0, 100.1, 100.0);
+        // Tiny green pause candle: Open 100.0, Close 100.05 (body 0.05 < 0.15 * ATR = 0.75, no hammer wick)
+        $candles[] = $this->candle(100.0, 100.1, 99.95, 100.05, 120.0);
+
+        $n = count($candles);
+        $ema8 = array_fill(0, $n, 102.0);
+        $ema8[$n - 1] = 103.0; // Rising EMA8
+        $ema50 = array_fill(0, $n, 95.0);
+
+        $ctx = $this->createContext($candles, $level, $atr, 'ADA-USDT', $ema8, $ema50);
+        $planner = new TradePlanner(['tp_percent' => 0.35]);
+        $strategy = new BounceStrategy(minEntryScore: 75.0);
+
+        $diag = $strategy->diagnose($ctx, $planner);
+        // bullish_confirmation MUST fail because of heavy down run and tiny body!
+        $this->assertFalse($diag->criteria['bullish_confirmation']->passed);
+        $this->assertNull($strategy->evaluate($ctx, $planner));
     }
 }

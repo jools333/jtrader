@@ -129,6 +129,7 @@ return [
         'tp_order_type' => env('TRADING_TP_ORDER_TYPE', 'TAKE_PROFIT_MARKET'), // TAKE_PROFIT_MARKET (Taker 0.05%) или TAKE_PROFIT (Maker 0.02%)
         'tp_percent' => (float) env('TRADING_TP_PCT', 0.60),             // Профит Target 1 в процентах от цены
         'tp_multiplier' => 2.0,           // Во сколько раз Target 2 больше Target 1
+        'min_stop_percent' => (float) env('TRADING_MIN_STOP_PCT', 0.40), // Минимальный порог стоп-лосса (% от цены входа, защита от микро-шума)
         'max_stop_percent' => (float) env('TRADING_MAX_STOP_PCT', 1.1), // Жесткий максимальный порог стоп-лосса (% от цены входа)
         'catastrophic_stop_percent' => 2.0, // Дальний защитный стоп-лосс на случай краха рынка
         'fee_maker_percent' => 0.02,      // Комиссия Maker (лимитный ордер)

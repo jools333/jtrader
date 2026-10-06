@@ -165,4 +165,25 @@ class TradePlannerTest extends TestCase
         // Entry: 100.0, tp_percent: 0.35%, total fee (maker + taker): 0.07% -> minTp = 0.42% -> 100.42
         $this->assertEqualsWithDelta(100.42, $signal->target1, 0.001);
     }
+
+    public function test_min_stop_percent_enforces_floor_on_tight_technical_stops(): void
+    {
+        $planner = new TradePlanner([
+            'min_stop_percent' => 0.40,
+            'max_stop_percent' => 1.10,
+        ]);
+
+        $ctx = $this->context(100.0, 0.05);
+        // Extremely tight technical stop at 99.88 (0.12% distance, like DOGE)
+        $signalLong = $planner->plan($ctx, SignalType::Bounce, Direction::Long, stopPrice: 99.88);
+        $this->assertNotNull($signalLong);
+        // Must be expanded to at least 0.40% distance -> stop = 99.60
+        $this->assertEqualsWithDelta(99.60, $signalLong->stop, 0.001);
+
+        // For SHORT: technical stop at 100.12 (0.12% distance)
+        $signalShort = $planner->plan($ctx, SignalType::Bounce, Direction::Short, stopPrice: 100.12);
+        $this->assertNotNull($signalShort);
+        // Must be expanded to at least 0.40% distance -> stop = 100.40
+        $this->assertEqualsWithDelta(100.40, $signalShort->stop, 0.001);
+    }
 }
