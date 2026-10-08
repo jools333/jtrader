@@ -33,6 +33,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Pair precision specifications (BingX contract specs)
+    |--------------------------------------------------------------------------
+    | price: decimals for price, stop, and target orders
+    | quantity: decimals for order quantity (0 = integer quantity)
+    */
+    'precisions' => [
+        'BTC-USDT'  => ['price' => 1, 'quantity' => 4],
+        'ETH-USDT'  => ['price' => 2, 'quantity' => 2],
+        'BNB-USDT'  => ['price' => 2, 'quantity' => 2],
+        'SOL-USDT'  => ['price' => 3, 'quantity' => 2],
+        'LINK-USDT' => ['price' => 3, 'quantity' => 1],
+        'ADA-USDT'  => ['price' => 4, 'quantity' => 0],
+        'XRP-USDT'  => ['price' => 4, 'quantity' => 0],
+        'DOGE-USDT' => ['price' => 5, 'quantity' => 0],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Supported timeframes (interval -> approx. seconds, used for sync math)
     |--------------------------------------------------------------------------
     */

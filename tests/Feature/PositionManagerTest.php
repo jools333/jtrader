@@ -9,6 +9,7 @@ use App\Models\Position;
 use App\Trading\Agent\TradingAgent;
 use App\Trading\Execution\PaperTradeExecutor;
 use App\Trading\Execution\PositionManager;
+use App\Trading\Support\ContractPrecision;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
@@ -93,7 +94,7 @@ class PositionManagerTest extends TestCase
 
         $signal = $result->entrySignal;
         $riskPerUnit = abs($signal->entryPrice - $signal->stop);
-        $expected = round((1_000.0 * 1.0 / 100.0) / $riskPerUnit, 4);
+        $expected = ContractPrecision::roundQuantity((1_000.0 * 1.0 / 100.0) / $riskPerUnit, 'ETH-USDT');
 
         $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
     }
@@ -119,7 +120,7 @@ class PositionManagerTest extends TestCase
 
         $signal = $result->entrySignal;
         $riskPerUnit = abs($signal->entryPrice - $signal->stop);
-        $expected = round((1_000.0 * 0.75 / 100.0) / $riskPerUnit, 4);
+        $expected = ContractPrecision::roundQuantity((1_000.0 * 0.75 / 100.0) / $riskPerUnit, 'ADA-USDT');
 
         $this->assertEqualsWithDelta($expected, $position->quantity, 0.0001);
     }
@@ -144,9 +145,9 @@ class PositionManagerTest extends TestCase
         $this->assertNotNull($position);
 
         // Notional max at 2.5% of 10000 = $250.
-        // At price ~100, max quantity is 250 / 100 = 2.5
+        // At price ~100, max quantity is 250 / 100 = 2.5 -> floored to 2 for integer contracts
         $signal = $result->entrySignal;
-        $expectedMaxQty = round(10_000.0 * 2.5 / 100.0 / $signal->entryPrice, 4);
+        $expectedMaxQty = ContractPrecision::roundQuantity(10_000.0 * 2.5 / 100.0 / $signal->entryPrice, 'DOGE-USDT');
 
         $this->assertEqualsWithDelta($expectedMaxQty, $position->quantity, 0.0001);
     }

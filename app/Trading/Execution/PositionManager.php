@@ -19,6 +19,7 @@ use App\Trading\DTO\PositionState;
 use App\Trading\Enums\Direction;
 use App\Trading\Enums\ExitType;
 use App\Trading\Services\DailyPositionReportService;
+use App\Trading\Support\ContractPrecision;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -253,7 +254,7 @@ final class PositionManager
             return 0.0;
         }
 
-        $quantity = round(($balance * $riskPct / 100.0) / $riskPerUnit, 4);
+        $quantity = ContractPrecision::roundQuantity(($balance * $riskPct / 100.0) / $riskPerUnit, $symbol);
 
         if ($maxQty > 0.0) {
             $quantity = min($quantity, $maxQty);
@@ -264,7 +265,7 @@ final class PositionManager
             : null;
         $maxPositionPct = $symbolMaxPos ?? (float) ($this->config['max_position_pct'] ?? 0.0);
         if ($maxPositionPct > 0.0 && $signal->entryPrice > 0.0) {
-            $maxByNotional = round($balance * $maxPositionPct / 100.0 / $signal->entryPrice, 4);
+            $maxByNotional = ContractPrecision::roundQuantity($balance * $maxPositionPct / 100.0 / $signal->entryPrice, $symbol);
             $quantity = min($quantity, $maxByNotional);
         }
 
@@ -621,7 +622,7 @@ final class PositionManager
         }
 
         // Round stop price to appropriate decimals
-        $newStop = round($newStop, $this->priceDecimals($position->entry_price));
+        $newStop = ContractPrecision::roundPrice($newStop, $position->symbol);
 
         Log::info(sprintf(
             '[dynamic_protection] Relocating stop for %s %s: %.6f -> %.6f (%s, profit: %.2f%%, price: %.6f)',
@@ -651,17 +652,5 @@ final class PositionManager
         ]);
 
         return $newStop;
-    }
-
-    private function priceDecimals(float $price): int
-    {
-        if ($price >= 100) {
-            return 2;
-        }
-        if ($price >= 1) {
-            return 4;
-        }
-
-        return 6;
     }
 }

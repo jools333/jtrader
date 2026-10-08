@@ -8,6 +8,7 @@ use App\Trading\Contracts\TradeExecutorInterface;
 use App\Trading\DTO\EntrySignal;
 use App\Trading\Enums\Direction;
 use App\Trading\Execution\OrderResult;
+use App\Trading\Support\ContractPrecision;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Throwable;
 
@@ -60,7 +61,6 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $side = $signal->direction === Direction::Long ? 'BUY' : 'SELL';
         $positionSide = $signal->direction === Direction::Long ? 'LONG' : 'SHORT';
         $tpType = (string) ($this->config['tp_order_type'] ?? config('trading.agent.tp_order_type', 'TAKE_PROFIT'));
-        $tpPrice = $tpType === 'TAKE_PROFIT' ? $signal->target1 : null;
 
         $entryType = strtoupper((string) ($this->config['entry_order_type'] ?? config('trading.agent.entry_order_type', 'LIMIT')));
         $postOnly = (bool) ($this->config['entry_post_only'] ?? config('trading.agent.entry_post_only', false));
@@ -72,19 +72,45 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             $entryPrice = $signal->direction === Direction::Long
                 ? $entryPrice * (1.0 - $offsetPct)
                 : $entryPrice * (1.0 + $offsetPct);
-            $entryPrice = round($entryPrice, $this->priceDecimals($signal->entryPrice));
         }
+        $entryPrice = ContractPrecision::roundPrice($entryPrice, $symbol);
+
+        $priceDecimals = ContractPrecision::priceDecimals($symbol, $signal->entryPrice);
+        $minTick = 10 ** (-$priceDecimals);
+
+        // Ensure rounded stop & TP do not collapse into entry price
+        $stopPrice = ContractPrecision::roundPrice($signal->stop, $symbol);
+        $target1 = ContractPrecision::roundPrice($signal->target1, $symbol);
+
+        if ($signal->direction === Direction::Long) {
+            if ($stopPrice >= $entryPrice) {
+                $stopPrice = round($entryPrice - $minTick, $priceDecimals);
+            }
+            if ($target1 <= $entryPrice) {
+                $target1 = round($entryPrice + $minTick, $priceDecimals);
+            }
+        } else {
+            if ($stopPrice <= $entryPrice) {
+                $stopPrice = round($entryPrice + $minTick, $priceDecimals);
+            }
+            if ($target1 >= $entryPrice) {
+                $target1 = round($entryPrice - $minTick, $priceDecimals);
+            }
+        }
+
+        $tpPrice = $tpType === 'TAKE_PROFIT' ? $target1 : null;
+        $orderQuantity = ContractPrecision::roundQuantity($quantity, $symbol);
 
         $params = [
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
             'type' => $entryType,
-            'quantity' => $quantity,
+            'quantity' => $orderQuantity,
             // Server-side protective orders so the position is covered even if
             // the agent process dies between bars.
-            'takeProfit' => $this->bracket($tpType, $signal->target1, $tpPrice),
-            'stopLoss' => $this->bracket('STOP_MARKET', $signal->stop),
+            'takeProfit' => $this->bracket($tpType, $target1, $tpPrice),
+            'stopLoss' => $this->bracket('STOP_MARKET', $stopPrice),
         ];
 
         if ($entryType === 'LIMIT') {
@@ -118,7 +144,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             return OrderResult::failure("No open {$positionSide} position found for {$symbol}.");
         }
 
-        $closeQty = round($qty * $percent / 100.0, 4);
+        $closeQty = ContractPrecision::roundQuantity($qty * $percent / 100.0, $symbol);
         $side = $direction === Direction::Long ? 'SELL' : 'BUY';
 
         return $this->send('/openApi/swap/v2/trade/order', [
@@ -139,12 +165,14 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         // one stop at the new level rather than accumulating duplicates.
         $this->cancelStopOrders($symbol, $positionSide);
 
+        $roundedStop = ContractPrecision::roundPrice($newStop, $symbol);
+
         return $this->send('/openApi/swap/v2/trade/order', [
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
             'type' => 'STOP_MARKET',
-            'stopPrice' => $newStop,
+            'stopPrice' => $roundedStop,
         ]);
     }
 
@@ -357,17 +385,5 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $orderId = $payload['data']['order']['orderId'] ?? $payload['data']['orderId'] ?? null;
 
         return OrderResult::success($orderId === null ? null : (string) $orderId, $payload);
-    }
-
-    private function priceDecimals(float $price): int
-    {
-        if ($price >= 100) {
-            return 2;
-        }
-        if ($price >= 1) {
-            return 4;
-        }
-
-        return 6;
     }
 }
