@@ -1,5 +1,20 @@
 name: jtrader
 
+# CPU budget
+# -------------
+# This VPS has only 2 vCPU and also runs the VPN/proxy stack (Xray VLESS Reality,
+# Shadowsocks, AmneziaWG, SSTP). Proxy encryption is CPU-bound, so when the
+# background workers are allowed to spin freely they starve the tunnel and the
+# VPN throughput collapses.
+#
+# The long-running workers below are therefore capped so the tunnel always keeps
+# headroom. Chart rendering is dispatched on the `charts` queue, which the queue
+# worker processes *after* the `default` queue — so trading-critical jobs keep
+# priority and only chart rendering slows down.
+#
+# `app`, `web`, `db` and `redis` are intentionally left uncapped: they are
+# bursty/idle most of the time but need full CPU for migrations and imports.
+
 # Shared PHP runtime tuning (serversideup reads these env vars).
 x-php-env: &php-env
   PHP_OPCACHE_ENABLE: "1"
@@ -88,7 +103,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
+          # Was "1.0" — this worker is CPU-bound (chart rendering) and was
+          # permanently consuming a full core of a 2-core host shared with the VPN.
+          cpus: "0.30"
     environment:
       <<: *php-env
     # Not an HTTP service — disable the image's php-fpm healthcheck.
@@ -112,6 +129,12 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     command: php artisan candles:ws
+    deploy:
+      resources:
+        limits:
+          # Burst-tolerant: keep enough headroom for the socket loop,
+          # but never let it compete with the VPN for a whole core.
+          cpus: "0.30"
     environment:
       <<: *php-env
     healthcheck:
@@ -134,6 +157,12 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     command: php artisan schedule:work
+    deploy:
+      resources:
+        limits:
+          # Bursty (agent:scan every 30s, positions:sync every 60s) but
+          # latency-insensitive; cap keeps the VPN responsive.
+          cpus: "0.20"
     environment:
       <<: *php-env
     healthcheck:
