@@ -113,9 +113,12 @@ Trading logic is located in `app/Trading/`:
     1. *ATR Bounce (`atr_bounce`)*: bounce $\ge 0.10 \times \text{ATR}$ from local extreme.
   - *Entry Rule*: All 8 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 80.0% = at least 8/9 criteria).
 - **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
-  - `BTC-USDT` is excluded from opening positions (`config('trading.excluded_symbols')`), but streams via WebSocket for market regime analysis.
+  - `BTC-USDT` and `ADA-USDT` are excluded from opening positions (`config('trading.excluded_symbols')`), but stream via WebSocket for market regime analysis. ADA was excluded after generating 85% of net losses during dead-zone chop around $0.25.
   - Altcoin LONG entries are blocked if BTC drops $> 0.30\%$ over 3 bars OR if BTC is in a macro downtrend (`BTC price < EMA50` AND `BTC EMA8 < EMA21`).
   - Altcoin SHORT entries are blocked if BTC pumps $> 0.30\%$ over 3 bars OR if BTC is in a macro uptrend (`BTC price > EMA50` AND `BTC EMA8 > EMA21`).
+  - *Macro HTF Filters (1h timeframe, `TRADING_BTC_HTF_FILTER_ENABLED=true` & `TRADING_ALT_HTF_FILTER_ENABLED=true`)*:
+    - Blocks altcoin LONGs if BTC is bearish on 1H (`price < EMA50` and falling), or if the altcoin itself is below its 1H EMA50.
+    - Blocks altcoin SHORTs if BTC is bullish on 1H (`price > EMA50` and rising), or if the altcoin itself is above its 1H EMA50.
 - **BTC Lead-Lag Fast Exit (`EarlyReversalStrategy`, `ExitReason::BtcReversal`)**:
   - Detects sharp BTC counter-impulses ($\ge 0.35\%$ drop for LONG or $\ge 0.35\%$ pump for SHORT over 2 bars) and executes immediate market exit on altcoins before they follow BTC down.
 - **Execution & Position Lifecycle Safeguards (`PositionManager`, `BingXTradeExecutor`, `BingXPositionSyncService`)**:
@@ -135,9 +138,9 @@ Trading logic is located in `app/Trading/`:
     - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
   - *Pending Limit Order Sync Protection*: 3-minute grace period with resting order inspection prevents prematurely marking unfilled limit entries as closed.
   - *Dynamic Profit Protection & Trailing Stop (`PositionManager::manageDynamicProtection`)*:
-    - *Quick Scalp Take-Profit (`TRADING_TP_MODE=quick`)*: TP placed at $+0.35\%$ net ($+0.42\%$ with exchange fees) for fast profit locking. In standard mode (`TRADING_TP_MODE=rr`), Target 1 is scaled to $\ge 1.5R - 2.0R$.
-    - *Automatic Break-Even (`TRADING_BE_ENABLED=true`)*: When unrealized profit reaches $\ge +0.60\%$ (`TRADING_BE_TRIGGER_PCT=0.60`), stop loss is automatically relocated on BingX to $\text{Entry} \pm 0.15\%$ (`TRADING_BE_BUFFER_PCT=0.15`), guaranteeing net profit after exchange round-trip fees (0.10%) and preventing winning trades from turning into losses or micro-losses.
-    - *Dynamic Trailing Stop (`TRADING_TRAILING_ENABLED=true`)*: When unrealized profit reaches $\ge +0.80\%$ (`TRADING_TRAILING_TRIGGER_PCT=0.80`), stop loss trails $0.35\%$ behind the peak price (`TRADING_TRAILING_DISTANCE_PCT=0.35`), letting trades absorb 1-minute noise while capturing extended swings.
+    - *Calibrated Take-Profit (`target1_r=1.4`)*: Target 1 scaled to **1.4R** (minimum R:R 1.2), locking in profit at ~+0.50% intraday bounce waves instead of holding for unrealistic 2.0R targets in low-volatility regimes.
+    - *Automatic Break-Even (`TRADING_BE_ENABLED=true`)*: When unrealized profit reaches $\ge +0.38\%$ (`TRADING_BE_TRIGGER_PCT=0.38`), stop loss is automatically relocated on BingX to $\text{Entry} \pm 0.12\%$ (`TRADING_BE_BUFFER_PCT=0.12`), guaranteeing net profit after exchange round-trip fees (0.10%) and preventing winning trades from turning into losses.
+    - *Dynamic Trailing Stop (`TRADING_TRAILING_ENABLED=true`)*: When unrealized profit reaches $\ge +0.60\%$ (`TRADING_TRAILING_TRIGGER_PCT=0.60`), stop loss trails $0.25\%$ behind the peak price (`TRADING_TRAILING_DISTANCE_PCT=0.25`), locking in runner profits.
   - *Exit Reason Price-Based Inference & Sync Protection (`BingXPositionSyncService::inferExitReasonFromPrice`)*:
     - When BingX fills a relocated stop or dynamic protection exit, it marks the order as `MARKET` and cancels the original brackets. Previously, this caused 80%+ of trades to be saved with `exit_reason = NULL` or `exchange_closed`.
     - Added fallback price inference comparing `exit_price` against `target1` and `stop_price` levels to accurately distinguish `take_profit_hit`, `stop_loss_hit`, `trailing_stop`, and `break_even`. Added automatic backfill in step 5 of sync and via `positions:backfill-exit-reason` artisan command.
@@ -257,5 +260,20 @@ Real trade statistics (positions, PnL) should be checked on the production serve
     - #592 ADA-USDT LONG (06.10 20:49 MSK): Stop Loss hit @ 0.2712 (-0.477% move), Realized: **-$14.99 USDT**, Fees: **-$3.13 USDT**, **Net: -$18.12 USDT**. The stop respected the new `min_stop_percent` (0.456% distance). Price went up to +0.40% (0.2736) but did not reach BE trigger (+0.60%) before local volume sell-off.
   - *Day PnL (Oct 06)*: Realized: **+$9.05 USDT**, Commissions: **-$6.28 USDT**, **Net PnL: +$2.77 USDT / VST** (positive day!).
   - *Trade Frequency*: Exactly 2 trades executed on Oct 06, perfectly fulfilling the user's objective of 1–2 trades per day.
-  - *Oct 07 Status*: 0 trades opened during nighttime chop, 1,760 evaluations checked; safety filters properly holding.
-  - *Cumulative Since Calibration (Oct 01 – Oct 07)*: 8 trades, **4/8 wins (50.0% Win Rate)**, Realized: **+$38.10 USDT**, Fees: **-$24.24 USDT**, Funding: **+$0.07 USDT**, **Net PnL: +$13.92 USDT**.
+- **2026-10-08 – 2026-10-13**:
+  - *Account Equity*: **89,697.81 VST** (-0.08% drawdown since Oct 01 baseline 89,767.04 VST; capital preserved, total drawdown <$80 across 2 weeks).
+  - *Verified Trades (6 trades, 1/6 wins)*:
+    - #593 XRP-USDT SHORT (09.10 18:56 MSK): Stop Loss hit @ 1.3865 (-0.28% move), MFE reached +0.25%, Net: **-$11.48 USDT**.
+    - #594 ADA-USDT LONG (10.10 06:03 MSK): Stop Loss hit @ 0.2517 (-0.56% move, stopped in 6m during BTC 1H downtrend), Net: **-$23.90 USDT**.
+    - #595 ADA-USDT LONG (10.10 19:17 MSK): Stop Loss hit @ 0.2538 (-0.47% move), MFE reached +0.27%, Net: **-$20.36 USDT**.
+    - #596 ADA-USDT SHORT (10.10 22:28 MSK): Stop Loss hit @ 0.2534 (-0.47% move, whipsaw after longing at bottom), Net: **-$18.05 USDT**.
+    - #597 ADA-USDT SHORT (12.10 13:26 MSK): Break-Even exit @ 0.2506 (+0.20% gain), Realized: **+$6.25 USDT**, Fees: **-$3.14 USDT**, Net: **+$3.12 USDT**.
+    - #598 DOGE-USDT LONG (12.10 19:01 MSK): Stop Loss hit @ 0.0848 (-0.46% move during BTC 1H downtrend), Net: **-$12.47 USDT**.
+  - *Root Cause Analysis*:
+    1. **ADA-USDT Dead-Zone Drag**: ADA was responsible for **-$94.59 USDT** in net losses (1 win, 5 losses), while all other pairs combined (SOL, LINK, XRP, DOGE) produced **+$16.60 USDT** net profit. ADA got stuck in an ultra-tight, dead-zone compression around $0.25 where 5m horizontal levels are repeatedly violated.
+    2. **Disabled Macro 1H Trend Filters**: With `btc_htf_filter_enabled=false` and `alt_htf_filter_enabled=false`, the bot longed ADA and DOGE into falling 1H BTC regimes.
+    3. **Asymmetric TP/BE Hurdles in Low-Volatility Chop**: Target 1 at 2.0R and BE at +0.60% were too far for 5m bounces that typically deliver +0.30%–+0.50%, causing trades with +0.25%–+0.40% profit to slide back into stop losses.
+  - *Remediation Implemented (2026-10-13)*:
+    - Added `ADA-USDT` to `TRADING_EXCLUDED_SYMBOLS` alongside `BTC-USDT`.
+    - Enabled Macro HTF Filters: `TRADING_BTC_HTF_FILTER_ENABLED=true` and `TRADING_ALT_HTF_FILTER_ENABLED=true`.
+    - Recalibrated Take-Profit & Dynamic Protection: Target 1 lowered to **1.4R** (`min_rr=1.2`), Break-Even trigger lowered to **+0.38%** (buffer **+0.12%**), Trailing Stop trigger lowered to **+0.60%** (distance **0.25%**).

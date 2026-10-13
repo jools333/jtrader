@@ -64,9 +64,7 @@ return [
     | Symbols monitored for market regime / intermarket signals but excluded
     | from opening trades.
     */
-    'excluded_symbols' => [
-        'BTC-USDT',
-    ],
+    'excluded_symbols' => array_values(array_filter(array_map('trim', explode(',', (string) env('TRADING_EXCLUDED_SYMBOLS', 'BTC-USDT'))))),
 
     /*
     |--------------------------------------------------------------------------
@@ -74,7 +72,7 @@ return [
     |--------------------------------------------------------------------------
     | Minimum criteria match percentage (0.0 to 100.0) required to log a setup.
     | 50.0 logs all setups reaching at least 50% criteria completion.
-    */
+    | */
     'min_eval_log_score' => (float) env('TRADING_MIN_EVAL_LOG_SCORE', 50.0),
 
     /*
@@ -87,20 +85,20 @@ return [
         'symbol_min_entry_score' => [
             'DOGE-USDT' => (float) env('TRADING_MIN_ENTRY_SCORE_DOGE', 75.0),
         ],
-        'min_rr' => (float) env('TRADING_MIN_RR', 1.5),          // reject entries with reward:risk below this
+        'min_rr' => (float) env('TRADING_MIN_RR', 1.2),          // reject entries with reward:risk below this
         'max_atr_travel' => (float) env('TRADING_MAX_ATR_TRAVEL', 0.70), // skip if price ran > 70% of ATR off the level
         'min_flat_width' => 0.30, // skip if last 5 candles span < ATR*0.30 (dead flat)
         'stop_atr' => 1.0,        // stop sits ATR*1.0 beyond the level
-        'target1_r' => (float) env('TRADING_TARGET1_R', 2.0),       // target 1 at 2.0R (used in 'rr' mode)
+        'target1_r' => (float) env('TRADING_TARGET1_R', 1.4),       // target 1 at 1.4R (scaled for intraday bounce)
         'target2_r' => (float) env('TRADING_TARGET2_R', 4.0),       // target 2 at 4.0R
         'tp_mode' => env('TRADING_TP_MODE', 'rr'), // 'rr' (соотношение R:R) или 'quick' (скальп-тейк)
         'quick_min_r' => (float) env('TRADING_QUICK_MIN_R', 1.0), // минимальный R:R для quick режима
 
         // BTC Anchor (межрыночный фильтр)
         'btc_filter_enabled' => (bool) env('TRADING_BTC_FILTER_ENABLED', true),
-        'btc_htf_filter_enabled' => (bool) env('TRADING_BTC_HTF_FILTER_ENABLED', false), // фильтр старшего таймфрейма BTC
+        'btc_htf_filter_enabled' => (bool) env('TRADING_BTC_HTF_FILTER_ENABLED', true), // фильтр старшего таймфрейма BTC (1h)
         'btc_htf_interval' => env('TRADING_BTC_HTF_INTERVAL', '1h'), // таймфрейм для анализа старшего тренда BTC (1h)
-        'alt_htf_filter_enabled' => (bool) env('TRADING_ALT_HTF_FILTER_ENABLED', false), // фильтр старшего таймфрейма самого альткоина
+        'alt_htf_filter_enabled' => (bool) env('TRADING_ALT_HTF_FILTER_ENABLED', true), // фильтр старшего таймфрейма самого альткоина (1h)
         'btc_max_dump_percent' => (float) env('TRADING_BTC_MAX_DUMP_PCT', 0.30), // макс допустимый дамп BTC за 3 свечи для входа в LONG
         'btc_max_pump_percent' => (float) env('TRADING_BTC_MAX_PUMP_PCT', 0.30), // макс допустимый памп BTC за 3 свечи для входа в SHORT
         'btc_storm_filter_enabled' => (bool) env('TRADING_BTC_STORM_FILTER_ENABLED', true), // блокировка входов при высокой абсолютной волатильности BTC
@@ -137,11 +135,11 @@ return [
 
         // Настройки автоматического безубытка (Break-Even) и трейлинг-стопа
         'break_even_enabled' => (bool) env('TRADING_BE_ENABLED', true),
-        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.60), // порог активации безубытка (+0.60% прибыли)
-        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.15),   // буфер комиссии (+0.15% от точки входа для гарантии чистой прибыли)
+        'break_even_trigger_pct' => (float) env('TRADING_BE_TRIGGER_PCT', 0.38), // порог активации безубытка (+0.38% прибыли)
+        'break_even_buffer_pct' => (float) env('TRADING_BE_BUFFER_PCT', 0.12),   // буфер комиссии (+0.12% от точки входа для гарантии чистой прибыли)
         'trailing_stop_enabled' => (bool) env('TRADING_TRAILING_ENABLED', true),
-        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.80), // порог активации трейлинга (+0.80% прибыли)
-        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.35), // отступ трейлинга от пика (0.35%)
+        'trailing_trigger_pct' => (float) env('TRADING_TRAILING_TRIGGER_PCT', 0.60), // порог активации трейлинга (+0.60% прибыли)
+        'trailing_distance_pct' => (float) env('TRADING_TRAILING_DISTANCE_PCT', 0.25), // отступ трейлинга от пика (0.25%)
         'protection_min_shift_pct' => (float) env('TRADING_PROTECTION_MIN_SHIFT_PCT', 0.03), // мин. сдвиг для вызова moveStop (0.03%)
 
         // Настройки BtcLeadLagStrategy (опережающе-запаздывающий арбитраж за BTC)
