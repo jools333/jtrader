@@ -39,8 +39,15 @@ final class EntryGuard
             return false;
         }
 
+        // Стратегия «пробой + ретест» работает на 1h от собственной геометрии
+        // диапазона, поэтому фильтры, откалиброванные под 5m скальпинг
+        // (удаление от уровня, BTC-шторм, дельта BTC за 3 бара и HTF-тренды),
+        // для неё отключены. Остаётся макро-режим BTC — защита от входа
+        // против глобального тренда (см. блок 3).
+        $isLevelRetest = $signalType === SignalType::LevelRetest;
+
         // 2. Порог максимального удаления цены от уровня (только для стратегий от уровней)
-        if ($signalType !== SignalType::BtcLeadLag) {
+        if (! $isLevelRetest && $signalType !== SignalType::BtcLeadLag) {
             $maxAtrTravel = (float) ($this->config['max_atr_travel'] ?? 0.70);
             // Если цена уже ушла дальше 70% ATR от уровня — вход блокируется
             if ($ctx->atrTravelFraction() > $maxAtrTravel) {
@@ -63,7 +70,27 @@ final class EntryGuard
             }
 
             $btcFilterEnabled = (bool) ($this->config['btc_filter_enabled'] ?? true);
-            if ($btcFilterEnabled) {
+
+            // Для LEVEL_RETEST (1h) достаточно макро-режима BTC: направление
+            // против устойчивого тренда BTC запрещено.
+            if ($btcFilterEnabled && $isLevelRetest) {
+                $btcPrice = $ctx->btcLastPrice();
+                $btcEma50 = $ctx->btcEma50();
+                $btcEma8 = $ctx->btcEma8();
+                $btcEma21 = $ctx->btcEma21();
+
+                if ($btcPrice !== null && $btcEma50 !== null && $btcEma8 !== null && $btcEma21 !== null) {
+                    $btcMacroBearish = $btcPrice < $btcEma50 && $btcEma8 < $btcEma21;
+                    $btcMacroBullish = $btcPrice > $btcEma50 && $btcEma8 > $btcEma21;
+
+                    if ($direction === Direction::Long && $btcMacroBearish) {
+                        return false;
+                    }
+                    if ($direction === Direction::Short && $btcMacroBullish) {
+                        return false;
+                    }
+                }
+            } elseif ($btcFilterEnabled) {
                 $btcRet3 = $ctx->btcReturnPct(3);
                 $maxDump = (float) ($this->config['btc_max_dump_percent'] ?? 0.30);
                 $maxPump = (float) ($this->config['btc_max_pump_percent'] ?? 0.30);
@@ -114,7 +141,7 @@ final class EntryGuard
         }
 
         // 4. Старший межрыночный фильтр BTC (BTC Higher Timeframe Regime: 1h)
-        if ($direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcHtfData()) {
+        if (! $isLevelRetest && $direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcHtfData()) {
             $btcHtfFilterEnabled = (bool) ($this->config['btc_htf_filter_enabled'] ?? false);
             if ($btcHtfFilterEnabled) {
                 $btcRet3 = $ctx->btcReturnPct(3) ?? 0.0;
@@ -131,7 +158,7 @@ final class EntryGuard
 
 
         // 5. Старший таймфрейм самого альткоина (Altcoin HTF Regime: 1h)
-        if ($direction !== null && $ctx->symbol !== 'BTC-USDT') {
+        if (! $isLevelRetest && $direction !== null && $ctx->symbol !== 'BTC-USDT') {
             $altHtfFilterEnabled = (bool) ($this->config['alt_htf_filter_enabled'] ?? false);
             if ($altHtfFilterEnabled) {
                 try {

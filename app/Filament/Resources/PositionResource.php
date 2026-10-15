@@ -108,6 +108,7 @@ class PositionResource extends Resource
                     ->badge()
                     ->color('info')
                     ->formatStateUsing(fn (string $state): string => match ($state) {
+                        SignalType::LevelRetest->value   => 'LEVEL RETEST',
                         SignalType::Bounce->value        => 'BOUNCE',
                         SignalType::Retest->value        => 'RETEST',
                         SignalType::FalseBreakout->value => 'FAKEOUT',
@@ -202,6 +203,7 @@ class PositionResource extends Resource
                         ExitType::Target2->value       => 'success',
                         ExitType::StopLoss->value      => 'danger',
                         ExitType::EarlyReversal->value => 'warning',
+                        ExitType::TimeStop->value      => 'gray',
                         default                        => 'gray',
                     })
                     ->formatStateUsing(fn (?string $state): string => match ($state) {
@@ -209,6 +211,7 @@ class PositionResource extends Resource
                         ExitType::Target2->value       => 'TP2',
                         ExitType::StopLoss->value      => 'SL',
                         ExitType::EarlyReversal->value => 'Разворот',
+                        ExitType::TimeStop->value      => 'Тайм-стоп',
                         null                           => '—',
                         default                        => $state,
                     })
@@ -251,6 +254,7 @@ class PositionResource extends Resource
                 SelectFilter::make('signal_type')
                     ->label('Тип сигнала')
                     ->options([
+                        SignalType::LevelRetest->value   => 'Level Retest',
                         SignalType::Bounce->value        => 'Bounce',
                         SignalType::Retest->value        => 'Retest',
                         SignalType::FalseBreakout->value => 'False Breakout',
@@ -350,6 +354,7 @@ class PositionResource extends Resource
                             ExitType::Target2->value       => 'success',
                             ExitType::StopLoss->value      => 'danger',
                             ExitType::EarlyReversal->value => 'warning',
+                            ExitType::TimeStop->value      => 'gray',
                             default                        => 'gray',
                         })
                         ->formatStateUsing(fn (?string $state): string => match ($state) {
@@ -357,6 +362,7 @@ class PositionResource extends Resource
                             ExitType::Target2->value       => 'Take Profit 2',
                             ExitType::StopLoss->value      => 'Stop Loss',
                             ExitType::EarlyReversal->value => 'Ранний разворот',
+                            ExitType::TimeStop->value      => 'Тайм-стоп',
                             default                        => $state ?? '—',
                         }),
                     TextEntry::make('exit_reason')

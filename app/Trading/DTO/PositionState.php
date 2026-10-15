@@ -25,13 +25,15 @@ final class PositionState
         public readonly float $size = 1.0,
         public readonly bool $breakevenSet = false,
         public readonly ?CarbonInterface $openedAt = null,
+        /** Тип сигнала, открывшего позицию (например LEVEL_RETEST), если известен. */
+        public readonly ?string $signalType = null,
     ) {}
 
     /**
      * @param array{
      *     direction: string, entry_price: float|int, stop_price: float|int,
      *     target1: float|int, target2: float|int, size?: float|int, breakeven_set?: bool,
-     *     opened_at?: mixed
+     *     opened_at?: mixed, signal_type?: string
      * } $data
      */
     public static function fromArray(array $data): self
@@ -45,6 +47,7 @@ final class PositionState
             size: (float) ($data['size'] ?? 1.0),
             breakevenSet: (bool) ($data['breakeven_set'] ?? false),
             openedAt: isset($data['opened_at']) ? Carbon::parse($data['opened_at']) : null,
+            signalType: isset($data['signal_type']) ? (string) $data['signal_type'] : null,
         );
     }
 }

@@ -11,6 +11,12 @@ use App\Trading\Enums\Direction;
 use App\Trading\Enums\ExitReason;
 use App\Trading\Enums\ExitType;
 use App\Trading\Enums\SignalType;
+use App\Trading\Strategies\Entry\BounceStrategy;
+use App\Trading\Strategies\Exit\EarlyReversalStrategy;
+use App\Trading\Strategies\Exit\LevelHoldExitStrategy;
+use App\Trading\Strategies\Exit\StopLossStrategy;
+use App\Trading\Strategies\Exit\Target1Strategy;
+use App\Trading\Strategies\Exit\Target2Strategy;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\TestCase;
 
@@ -44,16 +50,43 @@ class TradingAgentTest extends TestCase
         return $candles;
     }
 
-    private function agent(): TradingAgent
+    private function agent(array $config = []): TradingAgent
     {
-        return new TradingAgent([
+        return new TradingAgent(array_merge([
             'min_rr' => 2.0,
             'max_atr_travel' => 0.60,
             'min_flat_width' => 0.30,
             'stop_atr' => 0.5,
             'target1_r' => 2.0,
             'target2_r' => 4.0,
-        ]);
+        ], $config));
+    }
+
+    /**
+     * Агент с явно подключённой легаси-стратегией BOUNCE и старым набором
+     * выходов. Фикстуры этого файла описывают сетапы отскока, поэтому вход
+     * подключается напрямую — это фиксирует проверяемое поведение независимо
+     * от текущего набора стратегий по умолчанию (сейчас это LEVEL_RETEST).
+     */
+    private function bounceAgent(array $config = []): TradingAgent
+    {
+        return new TradingAgent(
+            array_merge([
+                'min_rr' => 2.0,
+                'max_atr_travel' => 0.60,
+                'min_flat_width' => 0.30,
+                'stop_atr' => 0.5,
+                'target1_r' => 2.0,
+                'target2_r' => 4.0,
+            ], $config),
+            entryStrategies: [new BounceStrategy],
+            exitStrategies: [
+                new StopLossStrategy,
+                new Target2Strategy,
+                new Target1Strategy,
+                new EarlyReversalStrategy($config),
+            ],
+        );
     }
 
     public function test_always_returns_an_indicator_snapshot(): void
@@ -104,7 +137,7 @@ class TradingAgentTest extends TestCase
         // Trigger candle rejecting level
         $candles[] = $this->candle(99.8, 100.5, 94.5, 95.5, 2000.0);
 
-        $result = $this->agent()->evaluate($candles, $level, $atr);
+        $result = $this->bounceAgent()->evaluate($candles, $level, $atr);
 
         $this->assertNotNull($result->entrySignal);
         $this->assertSame(SignalType::Bounce, $result->entrySignal->type);
@@ -135,7 +168,7 @@ class TradingAgentTest extends TestCase
         // 4. Confirmation bounce impulse (open 100.1, close 103.8, body 3.7 >= 3.5 ATR)
         $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
 
-        $result = $this->agent()->evaluate($candles, $level, $atr);
+        $result = $this->bounceAgent()->evaluate($candles, $level, $atr);
 
         $this->assertNotNull($result->entrySignal);
         $this->assertSame(SignalType::Bounce, $result->entrySignal->type);
@@ -155,7 +188,7 @@ class TradingAgentTest extends TestCase
         $candles[] = $this->candle(99.9, 100.5, 99.2, 100.0);
         $candles[] = $this->candle(103.5, 103.7, 98.0, 98.2);
 
-        $result = $this->agent()->evaluate($candles, $level, $atr, null, ['BOUNCE']);
+        $result = $this->bounceAgent()->evaluate($candles, $level, $atr, null, ['BOUNCE']);
 
         $this->assertNull($result->entrySignal);
     }
@@ -171,7 +204,7 @@ class TradingAgentTest extends TestCase
             target2: 110.0,
         );
 
-        $exit = $this->agent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
+        $exit = $this->bounceAgent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
 
         $this->assertNotNull($exit);
         $this->assertSame(ExitType::Target1, $exit->type);
@@ -184,7 +217,7 @@ class TradingAgentTest extends TestCase
         $candles = $this->baseline(55, 95, 100);
         $position = new PositionState(Direction::Long, 90.0, 88.0, 95.0, 100.0);
 
-        $exit = $this->agent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
+        $exit = $this->bounceAgent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
 
         $this->assertNotNull($exit);
         $this->assertSame(ExitType::Target2, $exit->type);
@@ -327,7 +360,7 @@ class TradingAgentTest extends TestCase
         $btcCandles = $this->baseline(50, 80000, 79000);
         $btcCandles[] = $this->candle(79000, 79100, 78000, 78200); // sharp dump
 
-        $agent = new TradingAgent([
+        $agent = $this->bounceAgent([
             'min_rr' => 2.0,
             'btc_filter_enabled' => true,
             'btc_max_dump_percent' => 0.20,
@@ -390,7 +423,7 @@ class TradingAgentTest extends TestCase
         $btcCandles[] = $this->candle(70000, 70010, 69990, 70000);
         $btcCandles[] = $this->candle(70000, 70010, 69990, 70000);
 
-        $agent = new TradingAgent([
+        $agent = $this->bounceAgent([
             'min_rr' => 2.0,
             'btc_filter_enabled' => true,
         ]);
@@ -423,7 +456,7 @@ class TradingAgentTest extends TestCase
         $btcCandles[] = $this->candle(80000, 80010, 79990, 80000);
         $btcCandles[] = $this->candle(80000, 80010, 79990, 80000);
 
-        $agent = new TradingAgent([
+        $agent = $this->bounceAgent([
             'min_rr' => 2.0,
             'btc_filter_enabled' => true,
         ]);
@@ -448,7 +481,7 @@ class TradingAgentTest extends TestCase
         $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
         $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
 
-        $agent = new TradingAgent([
+        $agent = $this->bounceAgent([
             'tp_mode' => 'quick',
             'min_profit_percent' => 0.35,
             'fee_maker_percent' => 0.02,
@@ -478,7 +511,7 @@ class TradingAgentTest extends TestCase
         $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
         $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000);
 
-        $agent = new TradingAgent([
+        $agent = $this->bounceAgent([
             'tp_mode' => 'rr',
             'target1_r' => 2.0,
             'min_rr' => 2.0,
@@ -512,5 +545,65 @@ class TradingAgentTest extends TestCase
 
         // Neither Target1 nor Target2 should falsely trigger at price >= 0
         $this->assertNull($result->exitSignal);
+    }
+
+    public function test_level_retest_target_is_closed_fully_not_partially(): void
+    {
+        $candles = $this->baseline(55, 95, 100); // last close = 100
+
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 90.0,
+            stopPrice: 88.0,
+            target1: 99.0,
+            target2: 99.0,
+            signalType: SignalType::LevelRetest->value,
+        );
+
+        $exit = $this->agent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
+
+        $this->assertNotNull($exit);
+        $this->assertSame(ExitType::Target1, $exit->type);
+        // Ключевое отличие от легаси-правил: цель закрывается целиком (2R),
+        // а не на 50% с переносом стопа.
+        $this->assertSame(100, $exit->closePercent);
+    }
+
+    public function test_level_retest_time_stop_closes_stale_position(): void
+    {
+        $candles = $this->baseline(55, 95, 100); // last close = 100
+
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 90.0,
+            stopPrice: 88.0,
+            target1: 200.0,
+            target2: 200.0,
+            openedAt: Carbon::now()->subHours(17),
+            signalType: SignalType::LevelRetest->value,
+        );
+
+        $exit = $this->agent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
+
+        $this->assertNotNull($exit);
+        $this->assertSame(ExitType::TimeStop, $exit->type);
+        $this->assertSame(100, $exit->closePercent);
+    }
+
+    public function test_time_stop_does_not_touch_positions_from_other_setups(): void
+    {
+        $candles = $this->baseline(55, 95, 100);
+
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 90.0,
+            stopPrice: 88.0,
+            target1: 200.0,
+            target2: 200.0,
+            openedAt: Carbon::now()->subHours(17),
+            signalType: SignalType::Bounce->value,
+        );
+
+        $this->assertNull($this->agent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal);
     }
 }

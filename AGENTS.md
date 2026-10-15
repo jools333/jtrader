@@ -98,8 +98,18 @@ and Filament pagination — it is compiled in the Dockerfile via `docker-php-ext
 ## Trading Module & Entry Strategies
 
 Trading logic is located in `app/Trading/`:
-- **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window.
-- **`Strategies/Entry/BounceStrategy`** — multi-candle Price Action pattern detector with dual-layer Hard/Soft criteria:
+- **`Contracts/TradingAgentInterface`** / **`Agent/TradingAgent`** — evaluates market state for entries and exits. Requires $\ge 50$ candles in evaluation window. `agent:scan` runs every 30s on **1h** candles (`--interval=1h`), so a signal appears once the hourly candle closes.
+- **`Strategies/Entry/LevelRetestStrategy` — THE ONLY ACTIVE ENTRY STRATEGY** (`SignalType::LevelRetest`, "пробой диапазона + ретест", под уровни по методу Артёма Звездина):
+  1. *Range (`range_width`)*: последние 12 закрытых свечей до свечи пробоя образуют зону проторговки; её ширина должна быть в диапазоне $1.5\text{–}4.5 \times \text{ATR}$ (уже — шум, шире — хаос/тренд-спайк). Верх диапазона = сопротивление, низ = поддержка.
+  2. *Break Confirmation (`break_confirmation`)*: закрытие свечи за уровнем в сторону сделки, но не дальше $0.8 \times \text{ATR}$ за него (анти-погоня: не входим в уже вынесенный импульс), тело свечи направлено в сторону сделки.
+  3. *Trend Alignment (`trend_alignment`)*: локальный тренд согласован — `EMA8 > EMA21` и цена выше `EMA21` для LONG (зеркально для SHORT).
+  4. *Structure Hold (`structure_hold`)*: между пробоем и ретестом ни одна свеча не закрылась дальше $0.35 \times \text{ATR}$ за уровень (уровень не потерян).
+  5. *Retest (`retest`)*: цена возвращается к пробитому уровню в зону $0.25 \times \text{ATR}$ и удерживается за ним (закрытие по нужную сторону + тело $\ge 0.05 \times \text{ATR}$).
+  6. *Risk Window (`risk_window`)*: стоп ставится за экстремум структуры (пробой + ретест) с буфером $0.15 \times \text{ATR}$, дистанция стопа должна попадать в окно $0.40\%–1.80\%$ от цены входа.
+  - Цель — **2R**, стоп технический (биржа держит bracket-ордера `TAKE_PROFIT_MARKET` + `STOP_MARKET`). Вход по рынку на открытии следующей свечи после подтверждённого ретеста.
+  - Работает только на 1h (`level_retest_interval`), незакрытая текущая свеча игнорируется.
+  - Калибровка: 28 дней истории BingX (5m/1h), вариант «range + retest» дал PF ≈ 1.7 и положительный результат в **обеих** половинах выборки (первая +$825, вторая +$125 при исключении ADA); отскоки/пробои без фильтра ширины диапазона на этой истории убыточны.
+- **`Strategies/Entry/BounceStrategy` (ОТКЛЮЧЕНА)** — легаси-детектор отскоков, оставлен в коде только для регрессионных тестов. Причина отключения: за 32 дня 144 сделки, 82% выходов по стопу, чистыми **−$618** (см. «Performance History»), микро-отскоки от ближайшего уровня не покрывали комиссии. Ниже — его исторические критерии:
   - **Hard Filters (100% strictly mandatory risk safeguards, failure blocks entry immediately)**:
     1. *Level Approach (`level_approach`)*: local extreme within $[L - 0.85 \times \text{ATR}, L + 0.85 \times \text{ATR}]$. Price MUST actually test the support/resistance level.
     2. *Entry Zone (`entry_zone`)*: entry close within $0.65 \times \text{ATR}$ of key level. Prevents chasing price after it already dumped to the floor or pumped to the peak.
@@ -114,9 +124,10 @@ Trading logic is located in `app/Trading/`:
   - *Entry Rule*: All 8 Hard Filters must pass AND total score $\ge \text{min\_entry\_score}$ (default 80.0% = at least 8/9 criteria).
 - **BTC Anchor & Intermarket Confirmation (`EntryGuard`)**:
   - `BTC-USDT` and `ADA-USDT` are excluded from opening positions (`config('trading.excluded_symbols')`), but stream via WebSocket for market regime analysis. ADA was excluded after generating 85% of net losses during dead-zone chop around $0.25.
-  - Altcoin LONG entries are blocked if BTC drops $> 0.30\%$ over 3 bars OR if BTC is in a macro downtrend (`BTC price < EMA50` AND `BTC EMA8 < EMA21`).
-  - Altcoin SHORT entries are blocked if BTC pumps $> 0.30\%$ over 3 bars OR if BTC is in a macro uptrend (`BTC price > EMA50` AND `BTC EMA8 > EMA21`).
-  - *Macro HTF Filters (1h timeframe, `TRADING_BTC_HTF_FILTER_ENABLED=true` & `TRADING_ALT_HTF_FILTER_ENABLED=true`)*:
+  - For the active `LEVEL_RETEST` signal **only the macro regime gate applies**: LONG is blocked when `BTC price < BTC EMA50` AND `BTC EMA8 < BTC EMA21`; SHORT is blocked when `BTC price > BTC EMA50` AND `BTC EMA8 > BTC EMA21`.
+  - The 5m-calibrated filters (max ATR travel from the level, BTC storm width, BTC 3-bar delta, BTC/alt 1h HTF regimes) are **skipped for `LEVEL_RETEST`**: they are tuned for 5m scalping and on 1h they would reject most valid setups. They still apply to legacy signal types (and their regression tests).
+  - Legacy (Bounce/other signals): Altcoin LONG entries are blocked if BTC drops $> 0.30\%$ over 3 bars OR if BTC is in a macro downtrend (`BTC price < EMA50` AND `BTC EMA8 < EMA21`); Altcoin SHORT entries are blocked if BTC pumps $> 0.30\%$ over 3 bars OR if BTC is in a macro uptrend (`BTC price > EMA50` AND `BTC EMA8 > EMA21`).
+  - *Macro HTF Filters (legacy signals only, 1h timeframe, `TRADING_BTC_HTF_FILTER_ENABLED=true` & `TRADING_ALT_HTF_FILTER_ENABLED=true`)*:
     - Blocks altcoin LONGs if BTC is bearish on 1H (`price < EMA50` and falling), or if the altcoin itself is below its 1H EMA50.
     - Blocks altcoin SHORTs if BTC is bullish on 1H (`price > EMA50` and rising), or if the altcoin itself is above its 1H EMA50.
 - **BTC Lead-Lag Fast Exit (`EarlyReversalStrategy`, `ExitReason::BtcReversal`)**:
@@ -138,22 +149,26 @@ Trading logic is located in `app/Trading/`:
     - `symbol_min_entry_score`: DOGE requires 80.0% score (vs 75% default), demanding at least 7/8 criteria match.
   - *Pending Limit Order Sync Protection*: 3-minute grace period with resting order inspection prevents prematurely marking unfilled limit entries as closed.
   - *Dynamic Profit Protection & Trailing Stop (`PositionManager::manageDynamicProtection`)*:
+    - **NOT applied to `LEVEL_RETEST` positions** (`trading.agent.dynamic_protection_skip_signals`): the setup is held to its 2R target; tightening the stop at +0.38%/+0.60% clipped winners and broke the backtested expectancy. Applies to legacy signals only.
     - *Calibrated Take-Profit (`target1_r=1.4`)*: Target 1 scaled to **1.4R** (minimum R:R 1.2), locking in profit at ~+0.50% intraday bounce waves instead of holding for unrealistic 2.0R targets in low-volatility regimes.
     - *Automatic Break-Even (`TRADING_BE_ENABLED=true`)*: When unrealized profit reaches $\ge +0.38\%$ (`TRADING_BE_TRIGGER_PCT=0.38`), stop loss is automatically relocated on BingX to $\text{Entry} \pm 0.12\%$ (`TRADING_BE_BUFFER_PCT=0.12`), guaranteeing net profit after exchange round-trip fees (0.10%) and preventing winning trades from turning into losses.
     - *Dynamic Trailing Stop (`TRADING_TRAILING_ENABLED=true`)*: When unrealized profit reaches $\ge +0.60\%$ (`TRADING_TRAILING_TRIGGER_PCT=0.60`), stop loss trails $0.25\%$ behind the peak price (`TRADING_TRAILING_DISTANCE_PCT=0.25`), locking in runner profits.
   - *Exit Reason Price-Based Inference & Sync Protection (`BingXPositionSyncService::inferExitReasonFromPrice`)*:
     - When BingX fills a relocated stop or dynamic protection exit, it marks the order as `MARKET` and cancels the original brackets. Previously, this caused 80%+ of trades to be saved with `exit_reason = NULL` or `exchange_closed`.
     - Added fallback price inference comparing `exit_price` against `target1` and `stop_price` levels to accurately distinguish `take_profit_hit`, `stop_loss_hit`, `trailing_stop`, and `break_even`. Added automatic backfill in step 5 of sync and via `positions:backfill-exit-reason` artisan command.
-- **Active Entry Strategies Status**:
-  - `BounceStrategy`: Multi-candle Price Action bounce setup from key horizontal levels with technical Stop Loss placed beyond support/resistance ($L \pm 0.25 \times \text{ATR}$) and calibrated Take Profit ($R:R \ge 2.0$, ensuring fees are well covered). The only active entry strategy.
-  - `BtcLeadLagStrategy`: Cross-asset momentum spillover / lead-lag entry following BTC impulses. Disabled (`TRADING_LEAD_LAG_ENABLED=false`) due to correlation risk on multi-asset cascade entries during false BTC breakouts.
-  - The other 3 strategies (`RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`) are temporarily disabled.
+- **Active Strategies Status (2026-10-15)**:
+  - **ENTRY**: `LevelRetestStrategy` (`LEVEL_RETEST`, 1h, «пробой диапазона + ретест уровня») — единственная активная.
+  - **EXIT**: `StopLossStrategy` (bracket на бирже) + `LevelHoldExitStrategy` = **полная фиксация 2R** + **тайм-стоп 16 часов** (`TRADING_LEVEL_RETEST_MAX_HOLD_HOURS`). Никаких частичных выходов 50%, переноса стопа в безубыток и трейлинга — они резали прибыль.
+  - `BounceStrategy` (скальп-отскок) — **ОТКЛЮЧЕНА**: 144 сделки за 32 дня, 82% выходов по стопу, чистыми −$618; осталась в коде только для регрессионных тестов (`tests/Unit/BounceStrategyTest.php`, `tests/Feature/PositionManagerTest.php`).
+  - `BtcLeadLagStrategy` — отключена (`TRADING_LEAD_LAG_ENABLED=false`): корреляционный риск каскадных входов на ложных пробоях BTC.
+  - `RetestStrategy`, `FalseBreakoutStrategy`, `TrendPullbackStrategy`, `EarlyReversalStrategy`, `Target1Strategy`, `Target2Strategy` — не используются по умолчанию (ранние выходы по развороту и частичные тейки давали отрицательное ожидание).
 - **Real-Time WebSocket Impulse Trigger (`BtcImpulseDetector`)**:
   - `WsCandles` streams live `BTC-USDT@kline_1m` ticks via BingX WebSocket.
   - When `TRADING_LEAD_LAG_ENABLED=true`, monitors price moves and triggers altcoin scans. When disabled (`false`), returns immediately.
   - Fixed WebSocket Ping/Pong keep-alive to maintain 24/7 stable connection without timeouts.
 - **Strategy Statistics & Diagnostics Logging**:
-  - `BounceStrategy::diagnose()` scores 12 individual criteria (4 hard + 8 soft).
+  - `LevelRetestStrategy::diagnose()` scores 6 criteria (range width, break confirmation, trend alignment, structure hold, retest, risk window); a full (100%) score opens the trade, partial scores are logged for review.
+  - `BounceStrategy::diagnose()` scores 12 individual criteria (4 hard + 8 soft) — legacy, used by tests.
   - All evaluations reaching $\ge 50\%$ criteria match are logged into `strategy_evaluations` table via `StrategyLoggerInterface` / `DatabaseStrategyLogger`.
   - Records include completion score %, status (`completed` for 100% / `partial` for 50-99%), exact values vs expected thresholds, human-readable `missing_criteria` list, initial chart (`chart_path`), and follow-up outcome chart (`outcome_chart_path` rendered after 30 candles via `strategy:render-outcomes` scheduler command).
   - Filament Resource: `StrategyEvaluationResource` provides interactive table, tabs ('Все ≥50%', 'Вход 100%', 'Близко ≥70%', 'Частичные'), filters, criteria checklist modal, dual chart view (at setup vs outcome +30 candles), and `StrategyStatsOverview` widget.
@@ -277,3 +292,9 @@ Real trade statistics (positions, PnL) should be checked on the production serve
     - Added `ADA-USDT` to `TRADING_EXCLUDED_SYMBOLS` alongside `BTC-USDT`.
     - Enabled Macro HTF Filters: `TRADING_BTC_HTF_FILTER_ENABLED=true` and `TRADING_ALT_HTF_FILTER_ENABLED=true`.
     - Recalibrated Take-Profit & Dynamic Protection: Target 1 lowered to **1.4R** (`min_rr=1.2`), Break-Even trigger lowered to **+0.38%** (buffer **+0.12%**), Trailing Stop trigger lowered to **+0.60%** (distance **0.25%**).
+- **2026-10-15: BounceStrategy отключена, включена LevelRetestStrategy (28-дневный аудит + бэктест)**:
+  - *Аудит 30 дней лайв-торговли (144 закрытые сделки: XRP/LINK/SOL/DOGE/ETH/BNB/ADA)*: Win rate **41.7%** (60/144), Realized **−$344.23**, комиссии **−$274.06**, **Net PnL −$618.29**.
+  - *Разбор причин*: 82% сделок (118) закрылись по стопу и лишь 8 — по тейку; средний выигрыш $18.97 против среднего проигрыша −$20.91 (payoff < 1, значит при win rate 42% ожидание отрицательное); фактический R:R ≈ 0.9 против планового 1.4–2.6; LONG дали −$469.73 против −$148.56 у SHORT; ADA −$327.57 и ETH −$250.13.
+  - *Вывод*: вход «микро-отскок на 0.10–0.20 ATR от ближайшего уровня» внутри 5m шума не имеет статистического перевеса, а комиссия 0.10% за круг при стопе 0.55% требует win rate > 47%.
+  - *Бэктест нового подхода (28 дней истории BingX 5m/1h, 6 символов, проверка каждой половины выборки)*: фейды ложных пробоев, EMA-откаты и пробои без фильтра диапазона — все в минусе. Положительный результат только у «пробой диапазона + ретест» с фильтром ширины зоны $1.5–4.5 \times \text{ATR}$ на 1h: **n=80, WR 48%, +$951, PF 1.71**; первая половина +$825, вторая +$125 (обе прибыльные).
+  - *Изменения*: активна только `LevelRetestStrategy` (1h), `agent:scan` переведён на `--interval=1h`; выход — полная фиксация 2R + тайм-стоп 16h; динамическая защита (BE/трейлинг) и частичные тейки для этого сигнала отключены; Bounce/BtcLeadLag/EarlyReversal/Target1/Target2 остаются в коде только для тестов.

@@ -140,28 +140,57 @@ class StrategyEvaluationTest extends TestCase
 
     public function test_trading_agent_logs_evaluation_when_analyzing(): void
     {
-        $atr = 10.0;
-        $level = 100.0;
+        $candles = $this->levelRetestCandles();
 
-        $candles = $this->baseline(45, 92, 98);
-        $candles[] = $this->candle(98.0, 103.0, 97.8, 102.5);
-        $candles[] = $this->candle(102.5, 104.5, 102.0, 104.0);
-        $candles[] = $this->candle(104.0, 104.2, 101.5, 102.0);
-        $candles[] = $this->candle(102.0, 102.2, 100.2, 100.8);
-        $candles[] = $this->candle(100.8, 101.2, 99.6, 100.2);
-        $candles[] = $this->candle(100.2, 100.6, 99.7, 100.1);
-        $candles[] = $this->candle(100.1, 104.0, 99.9, 103.8, 2000); // 100% full signal
-
+        // Агент из контейнера работает на активной стратегии LEVEL_RETEST (1h).
         $agent = app(TradingAgent::class);
-        $result = $agent->evaluate($candles, $level, $atr, null, [], 'BTC-USDT', '5m');
+        $result = $agent->evaluate($candles, 111.2, 1.1, null, [], 'SOL-USDT', '1h');
 
         $this->assertNotNull($result->entrySignal);
+        $this->assertSame('LEVEL_RETEST', $result->entrySignal->type->value);
         $this->assertDatabaseHas('strategy_evaluations', [
-            'symbol' => 'BTC-USDT',
-            'interval' => '5m',
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'strategy' => 'LEVEL_RETEST',
             'status' => 'completed',
             'score' => 100.0,
         ]);
+    }
+
+    /**
+     * Полный 1h-сетап «пробой диапазона + ретест» (см. LevelRetestStrategyTest).
+     *
+     * @return array<int, Candle>
+     */
+    private function levelRetestCandles(): array
+    {
+        $candles = [];
+        $price = 100.0;
+
+        for ($i = 0; $i < 45; $i++) {
+            $open = $price;
+            $close = $price + 0.2;
+            $candles[] = $this->candle($open, $close + 0.4, $open - 0.4, $close);
+            $price = $close;
+        }
+
+        $osc = [109.6, 110.4];
+        for ($i = 0; $i < 12; $i++) {
+            $open = $price;
+            $close = $osc[$i % 2];
+            $candles[] = $this->candle($open, max($open, $close) + 0.1, min($open, $close) - 0.1, $close);
+            $price = $close;
+        }
+
+        // Тени границ диапазона.
+        $candles[] = $this->candle($price, 111.2, $price - 0.1, 110.0);
+        $candles[] = $this->candle(110.0, 110.2, 108.4, 109.6);
+
+        // Пробой и ретест.
+        $candles[] = $this->candle(110.4, 111.7, 110.25, 111.6);
+        $candles[] = $this->candle(111.65, 112.2, 111.25, 111.85);
+
+        return $candles;
     }
 
     public function test_strategy_evaluation_filament_resource_accessible(): void

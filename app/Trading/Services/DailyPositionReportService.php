@@ -416,6 +416,7 @@ class DailyPositionReportService
                 ExitType::Target2->value => 'TP2',
                 ExitType::StopLoss->value => 'SL',
                 ExitType::EarlyReversal->value => 'Разворот',
+                ExitType::TimeStop->value => 'Тайм-стоп',
                 'MARKET' => 'Рынок',
                 default => $pos->exit_type,
             };
@@ -427,6 +428,7 @@ class DailyPositionReportService
     public function formatSignal(?string $signalType): string
     {
         return match ($signalType) {
+            SignalType::LevelRetest->value => 'LEVEL_RETEST',
             SignalType::Bounce->value => 'BOUNCE',
             SignalType::Retest->value => 'RETEST',
             SignalType::FalseBreakout->value => 'FAKEOUT',

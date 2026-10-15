@@ -24,22 +24,18 @@ use App\Trading\DTO\EntrySignal;
 use App\Trading\DTO\ExitSignal;
 // Импорт DTO состояния открытой позиции
 use App\Trading\DTO\IndicatorSnapshot;
-// Импорт стратегии отскока
+// Импорт состояния открытой позиции
 use App\Trading\DTO\PositionState;
-// Импорт стратегии BTC Lead-Lag
-use App\Trading\Strategies\Entry\BounceStrategy;
-// Импорт стратегии ложного пробоя
-// Импорт стратегии пробоя и ретеста
-// Импорт стратегии отката по тренду
-// Импорт стратегии раннего разворота
+// Импорт активной стратегии входа (пробой диапазона + ретест уровня)
+use App\Trading\Strategies\Entry\LevelRetestStrategy;
+// Импорт стратегии BTC Lead-Lag (отключена по умолчанию)
 use App\Trading\Strategies\Entry\BtcLeadLagStrategy;
-// Импорт стратегии стоп-лосса
+// Импорт стратегии раннего разворота (отключена по умолчанию)
 use App\Trading\Strategies\Exit\EarlyReversalStrategy;
-// Импорт стратегии фиксации цели 1
+// Импорт стратегии стоп-лосса
 use App\Trading\Strategies\Exit\StopLossStrategy;
-// Импорт стратегии фиксации цели 2
-use App\Trading\Strategies\Exit\Target1Strategy;
-use App\Trading\Strategies\Exit\Target2Strategy;
+// Импорт стратегии удержания до цели + тайм-стоп
+use App\Trading\Strategies\Exit\LevelHoldExitStrategy;
 
 /**
  * Торговый агент — оркестратор процесса анализа и принятия решений.
@@ -76,23 +72,35 @@ final class TradingAgent implements TradingAgentInterface
         // Инициализация фильтров защиты
         $this->guard = $guard ?? new EntryGuard($this->config);
 
-        // Регистрация набора стратегий входа по умолчанию
+        // Регистрация набора стратегий входа по умолчанию.
+        // Активна ровно одна стратегия — «Пробой диапазона + ретест уровня»
+        // (LEVEL_RETEST). Скальп-отскок Bounce и остальные легаси-стратегии
+        // отключены как убыточные (см. торговую статистику в AGENTS.md).
         $leadLagEnabled = (bool) ($this->config['lead_lag_enabled'] ?? false);
-        $defaultStrategies = [
-            new BounceStrategy(
+        $levelRetestEnabled = (bool) ($this->config['level_retest_enabled'] ?? true);
+        $defaultStrategies = [];
+
+        if ($levelRetestEnabled) {
+            $defaultStrategies[] = new LevelRetestStrategy(
                 logger: $logger,
-                minEntryScore: (float) ($this->config['min_entry_score'] ?? 75.0),
-                lookbackCandles: (int) ($this->config['bounce_lookback_candles'] ?? 10),
-                levelApproachAtr: (float) ($this->config['bounce_level_approach_atr'] ?? 0.85),
-                bounceReversalAtr: (float) ($this->config['bounce_reversal_atr'] ?? 0.10),
-                minAtrPercent: (float) ($this->config['bounce_min_atr_percent'] ?? 0.20),
-                stopBufferAtr: (float) ($this->config['bounce_stop_atr_buffer'] ?? 0.25),
-                entryZoneAtr: (float) ($this->config['bounce_entry_zone_atr'] ?? 0.65),
-                volumeMultiplier: (float) ($this->config['bounce_volume_multiplier'] ?? 0.90),
-                climaxVolumeMultiplier: (float) ($this->config['bounce_climax_volume_mult'] ?? 2.20),
-                symbolMinEntryScores: (array) ($this->config['symbol_min_entry_score'] ?? []),
-            ),
-        ];
+                lookback: (int) ($this->config['level_retest_lookback'] ?? 12),
+                retestWindow: (int) ($this->config['level_retest_retest_window'] ?? 4),
+                minWidthAtr: (float) ($this->config['level_retest_min_width_atr'] ?? 1.5),
+                maxWidthAtr: (float) ($this->config['level_retest_max_width_atr'] ?? 4.5),
+                maxExtensionAtr: (float) ($this->config['level_retest_max_extension_atr'] ?? 0.8),
+                emaFast: (int) ($this->config['level_retest_ema_fast'] ?? 8),
+                emaSlow: (int) ($this->config['level_retest_ema_slow'] ?? 21),
+                retestZoneAtr: (float) ($this->config['level_retest_retest_zone_atr'] ?? 0.25),
+                retestBodyAtr: (float) ($this->config['level_retest_retest_body_atr'] ?? 0.05),
+                failAtr: (float) ($this->config['level_retest_fail_atr'] ?? 0.35),
+                stopBufferAtr: (float) ($this->config['level_retest_stop_buffer_atr'] ?? 0.15),
+                minStopPercent: (float) ($this->config['level_retest_min_stop_pct'] ?? 0.40),
+                maxStopPercent: (float) ($this->config['level_retest_max_stop_pct'] ?? 1.80),
+                targetR: (float) ($this->config['level_retest_target_r'] ?? 2.0),
+                minEntryScore: 100.0,
+                requiredInterval: (string) ($this->config['level_retest_interval'] ?? '1h'),
+            );
+        }
 
         if ($leadLagEnabled) {
             $defaultStrategies[] = new BtcLeadLagStrategy(
@@ -105,11 +113,14 @@ final class TradingAgent implements TradingAgentInterface
 
         $this->entryStrategies = $entryStrategies ?? $defaultStrategies;
 
-        // Регистрация набора стратегий выхода в порядке строгого приоритета
+        // Регистрация набора стратегий выхода в порядке строгого приоритета.
+        // 1) Стоп-лосс (биржа + агент), 2) полная фиксация цели/тайм-стоп,
+        // 3) досрочный разворот (отключён флагом early_reversal_enabled).
         $this->exitStrategies = $exitStrategies ?? [
             new StopLossStrategy,
-            new Target2Strategy,
-            new Target1Strategy,
+            new LevelHoldExitStrategy(
+                maxHoldHours: (int) ($this->config['level_retest_max_hold_hours'] ?? 16),
+            ),
             new EarlyReversalStrategy($this->config),
         ];
     }

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Trading\Enums;
 
 /**
- * The four exit conditions the agent can raise against an open position.
+ * The exit conditions the agent can raise against an open position.
  */
 enum ExitType: string
 {
@@ -13,4 +13,6 @@ enum ExitType: string
     case Target2 = 'TARGET2';
     case EarlyReversal = 'EARLY_REVERSAL';
     case StopLoss = 'STOP_LOSS';
+    /** Setup did not play out within the max hold window — close at market. */
+    case TimeStop = 'TIME_STOP';
 }

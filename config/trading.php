@@ -109,7 +109,42 @@ return [
         'btc_fast_exit_pump_percent' => (float) env('TRADING_BTC_FAST_EXIT_PUMP_PCT', 0.80), // импульсный памп BTC для опережающего выхода из SHORT
         'min_hold_seconds' => (int) env('TRADING_MIN_HOLD_SECONDS', 180), // минимальное время удержания позиции (сек) перед досрочным выходом по рынку
 
-        // Настройки BounceStrategy
+        /*
+        |----------------------------------------------------------------------
+        | LevelRetestStrategy — единственная активная стратегия входа
+        |----------------------------------------------------------------------
+        | Сетап «пробой диапазона + ретест уровня» на 1h. Вход только после
+        | подтверждённого закрепления за границей диапазона и возврата к ней.
+        | Стоп ставится за экстремум структуры, цель — 2R.
+        | Параметры откалиброваны на 28 днях истории BingX (обе половины
+        | выборки прибыльные, PF ~1.7 при фильтре ширины диапазона 1.5–4.5 ATR).
+        */
+        'level_retest_enabled' => (bool) env('TRADING_LEVEL_RETEST_ENABLED', true),
+        'level_retest_interval' => env('TRADING_LEVEL_RETEST_INTERVAL', '1h'), // рабочий таймфрейм
+        'level_retest_lookback' => (int) env('TRADING_LEVEL_RETEST_LOOKBACK', 12), // свечей в диапазоне
+        'level_retest_retest_window' => (int) env('TRADING_LEVEL_RETEST_WINDOW', 4), // окно ретеста (свечей)
+        'level_retest_min_width_atr' => (float) env('TRADING_LEVEL_RETEST_MIN_WIDTH_ATR', 1.5), // мин. ширина диапазона в ATR
+        'level_retest_max_width_atr' => (float) env('TRADING_LEVEL_RETEST_MAX_WIDTH_ATR', 4.5), // макс. ширина диапазона в ATR
+        'level_retest_max_extension_atr' => (float) env('TRADING_LEVEL_RETEST_MAX_EXT_ATR', 0.8), // анти-погоня: макс. вынос за уровень
+        'level_retest_ema_fast' => 8,   // быстрая EMA для подтверждения локального тренда
+        'level_retest_ema_slow' => 21,  // медленная EMA
+        'level_retest_retest_zone_atr' => (float) env('TRADING_LEVEL_RETEST_ZONE_ATR', 0.25), // зона подхода к уровню
+        'level_retest_retest_body_atr' => (float) env('TRADING_LEVEL_RETEST_BODY_ATR', 0.05), // мин. тело свечи ретеста
+        'level_retest_fail_atr' => (float) env('TRADING_LEVEL_RETEST_FAIL_ATR', 0.35), // потеря структуры до ретеста
+        'level_retest_stop_buffer_atr' => (float) env('TRADING_LEVEL_RETEST_STOP_BUFFER_ATR', 0.15), // буфер стопа за экстремум
+        'level_retest_min_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MIN_STOP_PCT', 0.40), // мин. стоп (% цены)
+        'level_retest_max_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MAX_STOP_PCT', 1.80), // макс. стоп (% цены)
+        'level_retest_target_r' => (float) env('TRADING_LEVEL_RETEST_TARGET_R', 2.0), // цель в R
+        'level_retest_max_hold_hours' => (int) env('TRADING_LEVEL_RETEST_MAX_HOLD_HOURS', 16), // тайм-стоп (часов)
+        // Динамическая защита (BE/трейлинг) не применяется к этим типам сигналов:
+        // они держатся до цели, ранняя подтяжка стопа режет прибыль.
+        'dynamic_protection_skip_signals' => ['LEVEL_RETEST'],
+
+        /*
+        |----------------------------------------------------------------------
+        | Legacy: BounceStrategy (отключена, параметры сохранены для истории)
+        |----------------------------------------------------------------------
+        */
         'bounce_lookback_candles' => 10,  // Количество свечей для поиска локального минимума/максимума
         'bounce_level_approach_atr' => (float) env('TRADING_BOUNCE_LEVEL_APPROACH_ATR', 0.85), // Допустимая зона от уровня для теста (в ATR)
         'bounce_entry_zone_atr' => (float) env('TRADING_BOUNCE_ENTRY_ZONE_ATR', 0.65), // Допустимая зона для точки входа с учетом отскока (в ATR)

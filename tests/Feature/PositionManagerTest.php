@@ -9,6 +9,11 @@ use App\Models\Position;
 use App\Trading\Agent\TradingAgent;
 use App\Trading\Execution\PaperTradeExecutor;
 use App\Trading\Execution\PositionManager;
+use App\Trading\Strategies\Entry\BounceStrategy;
+use App\Trading\Strategies\Exit\EarlyReversalStrategy;
+use App\Trading\Strategies\Exit\StopLossStrategy;
+use App\Trading\Strategies\Exit\Target1Strategy;
+use App\Trading\Strategies\Exit\Target2Strategy;
 use App\Trading\Support\ContractPrecision;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
@@ -49,10 +54,39 @@ class PositionManagerTest extends TestCase
         return $candles;
     }
 
+    /**
+     * Агент для тестов менеджера позиций.
+     *
+     * По умолчанию агент торгует стратегией LEVEL_RETEST, а фикстуры этого
+     * файла построены на легаси-сетапе BOUNCE, поэтому стратегии подключаются
+     * явно — это фиксирует проверяемое поведение (размер позиции, защита,
+     * кулдауны) и не зависит от текущего набора стратегий по умолчанию.
+     */
+    private function agent(): TradingAgent
+    {
+        $config = (array) config('trading.agent');
+
+        return new TradingAgent(
+            config: $config,
+            entryStrategies: [
+                new BounceStrategy(
+                    minEntryScore: (float) ($config['min_entry_score'] ?? 75.0),
+                    symbolMinEntryScores: (array) ($config['symbol_min_entry_score'] ?? []),
+                ),
+            ],
+            exitStrategies: [
+                new StopLossStrategy,
+                new Target2Strategy,
+                new Target1Strategy,
+                new EarlyReversalStrategy($config),
+            ],
+        );
+    }
+
     private function manager(float $paperBalance = 1_000.0, float $riskPct = 1.0): PositionManager
     {
         return new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), $paperBalance),
             config: array_merge((array) config('trading'), [
                 'risk_percent' => $riskPct,
@@ -102,7 +136,7 @@ class PositionManagerTest extends TestCase
     public function test_quantity_uses_symbol_risk_pct_override(): void
     {
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'risk_percent' => 1.0,
@@ -128,7 +162,7 @@ class PositionManagerTest extends TestCase
     public function test_quantity_uses_symbol_max_position_pct_override(): void
     {
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 10_000.0),
             config: array_merge((array) config('trading'), [
                 'risk_percent' => 5.0,
@@ -192,7 +226,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'entry_cooldown_minutes' => 30,
@@ -209,7 +243,7 @@ class PositionManagerTest extends TestCase
     public function test_excluded_symbol_is_not_opened(): void
     {
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'excluded_symbols' => ['BTC-USDT'],
@@ -244,7 +278,7 @@ class PositionManagerTest extends TestCase
         }
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'max_open_positions' => 3,
@@ -292,7 +326,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'entry_cooldown_minutes' => 30,
@@ -338,7 +372,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'daily_loss_limit' => 150.0,
@@ -352,7 +386,7 @@ class PositionManagerTest extends TestCase
 
         // When circuit breaker is disabled (0), entry proceeds
         $managerDisabled = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'daily_loss_limit' => 0.0,
@@ -383,7 +417,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'agent' => [
@@ -428,7 +462,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'agent' => [
@@ -473,7 +507,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'max_open_positions' => 5,
@@ -489,7 +523,7 @@ class PositionManagerTest extends TestCase
 
         // When max_positions_per_direction is relaxed to 2, second SHORT is allowed
         $managerMulti = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'max_open_positions' => 5,
@@ -523,7 +557,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'max_open_positions' => 5,
@@ -572,7 +606,7 @@ class PositionManagerTest extends TestCase
         ]);
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'daily_loss_limit' => 150.0,
@@ -603,7 +637,7 @@ class PositionManagerTest extends TestCase
         \Illuminate\Support\Facades\Queue::fake();
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'chart' => [
@@ -626,7 +660,7 @@ class PositionManagerTest extends TestCase
         \Illuminate\Support\Facades\Queue::fake();
 
         $manager = new PositionManager(
-            agent: new TradingAgent((array) config('trading.agent')),
+            agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
             config: array_merge((array) config('trading'), [
                 'chart' => [

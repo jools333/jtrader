@@ -16,14 +16,18 @@ use Throwable;
  * Run the trading agent over configured pairs/timeframes against the nearest
  * key level, acting on any signal and logging positions to the database.
  *
- *   php artisan agent:scan                    # all configured pairs/timeframes
- *   php artisan agent:scan --symbol=BTC-USDT --interval=5m
+ * The active strategy ({@see \App\Trading\Strategies\Entry\LevelRetestStrategy})
+ * works on 1h candles, so that is the default interval. The command itself runs
+ * every 30 seconds; a signal only appears once the 1h candle has closed.
+ *
+ *   php artisan agent:scan                    # all configured pairs on 1h
+ *   php artisan agent:scan --symbol=SOL-USDT --interval=1h
  */
 class AgentScan extends Command
 {
     protected $signature = 'agent:scan
         {--symbol= : Limit to a single symbol}
-        {--interval=5m : Entry timeframe (levels are built on the next higher timeframe)}';
+        {--interval=1h : Entry timeframe (levels are built on the next higher timeframe)}';
 
     protected $description = 'Evaluate the trading agent and act on entry/exit signals';
 

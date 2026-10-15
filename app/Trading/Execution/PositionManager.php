@@ -197,7 +197,7 @@ final class PositionManager
             'price' => round($filledAt, 8),
         ];
 
-        if ($exit->type === ExitType::Target1) {
+        if ($exit->type === ExitType::Target1 && $exit->closePercent < 100) {
             // Partial: bank 50%, trail stop to break-even, stay open.
             $this->executor->moveStop($position->symbol, $position->direction(), $exit->moveStopTo ?? $position->entry_price);
             $position->update([
@@ -216,6 +216,7 @@ final class PositionManager
             'exit_reason' => $exit->reason?->value ?? match ($exit->type) {
                 ExitType::StopLoss => 'stop_loss_hit',
                 ExitType::Target2, ExitType::Target1 => 'take_profit_hit',
+                ExitType::TimeStop => 'time_stop',
                 default => null,
             },
             'exit_price' => $filledAt,
@@ -292,6 +293,7 @@ final class PositionManager
             // A reduced size means T1 already banked profit and the stop is at break-even.
             breakevenSet: $position->size < 1.0,
             openedAt: $position->opened_at,
+            signalType: $position->signal_type,
         );
     }
 
@@ -556,7 +558,16 @@ final class PositionManager
             return null;
         }
 
+        // Сделки «пробой + ретест» держатся до цели 2R: подтяжка стопа в
+        // безубыток/трейлинг обрезала бы прибыль и ломала бы ожидание.
         $agentConfig = (array) ($this->config['agent'] ?? []);
+        $skipSignals = (array) ($agentConfig['dynamic_protection_skip_signals']
+            ?? $this->config['dynamic_protection_skip_signals']
+            ?? []);
+        if ($skipSignals !== [] && in_array((string) $position->signal_type, $skipSignals, true)) {
+            return null;
+        }
+
         $isLong = $position->direction() === Direction::Long;
         $entry = $position->entry_price;
 
