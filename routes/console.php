@@ -11,9 +11,13 @@ Artisan::command('inspire', function () {
 // Candle data is now kept live by the `ws` container (candles:ws WebSocket stream).
 // candles:sync remains available for manual one-off pulls and as a fallback seed.
 
+// Активная стратегия работает на закрытых 1h-свечах: сканировать чаще, чем
+// раз в 5 минут, бессмысленно (раньше каждый скан ещё и плодил записи в
+// strategy_evaluations). Стопы/тейки при этом живут на бирже, а позиции
+// синхронизируются отдельной командой positions:sync раз в минуту.
 Schedule::command('agent:scan')
-    ->everyThirtySeconds()
-    ->withoutOverlapping(2);
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10);
 
 Schedule::command('strategy:render-outcomes')
     ->everyTwoMinutes()
