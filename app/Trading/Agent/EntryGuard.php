@@ -57,9 +57,12 @@ final class EntryGuard
 
         // 3. Межрыночный фильтр BTC (BTC Market Regime / BTC Anchor)
         if ($direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcData()) {
-            // Штормовой фильтр: блокируем входы при слишком высокой абсолютной волатильности
+            // Штормовой фильтр: блокируем входы при слишком высокой абсолютной
+            // волатильности. Порог откалиброван под 5m скальпинг (0.8% за 15
+            // свечей) и на 1h срабатывает почти всегда, поэтому для
+            // LEVEL_RETEST он не применяется.
             $stormFilterEnabled = (bool) ($this->config['btc_storm_filter_enabled'] ?? true);
-            if ($stormFilterEnabled) {
+            if ($stormFilterEnabled && ! $isLevelRetest) {
                 $stormThreshold = (float) ($this->config['btc_storm_threshold_pct'] ?? 0.80);
                 $stormLookback = (int) ($this->config['btc_storm_lookback'] ?? 15);
                 $btcWidth = $ctx->btcRecentWidthPct($stormLookback);

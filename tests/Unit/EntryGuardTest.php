@@ -192,4 +192,34 @@ class EntryGuardTest extends TestCase
         ]);
         $this->assertTrue($guardDisabled->allows($ctx, Direction::Long, SignalType::Bounce));
     }
+
+    public function test_btc_storm_filter_does_not_block_level_retest(): void
+    {
+        $guard = new EntryGuard([
+            'btc_storm_filter_enabled' => true,
+            'btc_storm_threshold_pct' => 0.80,
+            'btc_storm_lookback' => 15,
+            'btc_filter_enabled' => true,
+        ]);
+
+        // 15 часовых свечей BTC с размахом ~1% — «шторм» по 5m-меркам.
+        $btcCandles = [];
+        for ($i = 0; $i < 15; $i++) {
+            if ($i === 7) {
+                $btcCandles[] = new Candle(1_000, 99500.0, 100000.0, 99000.0, 99200.0, 100.0, 1_000);
+            } else {
+                $btcCandles[] = new Candle(1_000, 99800.0, 99900.0, 99700.0, 99850.0, 10.0, 1_000);
+            }
+        }
+
+        $ctx = $this->createContext(
+            btcCandles: $btcCandles,
+            btcHtfCandles: [$btcCandles[0], $btcCandles[0], $btcCandles[0]],
+        );
+
+        // Легаси-сигналы по-прежнему блокируются штормовым фильтром.
+        $this->assertFalse($guard->allows($ctx, Direction::Long, SignalType::Bounce));
+        // Активная 1h-стратегия от уровней этот фильтр не использует.
+        $this->assertTrue($guard->allows($ctx, Direction::Long, SignalType::LevelRetest));
+    }
 }
