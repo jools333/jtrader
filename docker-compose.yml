@@ -88,7 +88,19 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # Redis держит только кэш и очередь (данные эфемерные): persistence не нужна,
+    # а жёсткий лимит памяти защищает сервер (3.8 ГБ RAM) от OOM-петли, когда
+    # очередь графиков разрастается.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
     volumes:
       - redis-data:/data
     networks:

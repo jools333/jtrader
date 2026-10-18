@@ -30,6 +30,15 @@ final class DatabaseStrategyLogger implements StrategyLoggerInterface
             return;
         }
 
+        // Агент сканирует каждые 30 секунд и видит один и тот же закрытый бар
+        // десятки раз. Без дедупликации таблица и очередь графиков получали
+        // ~17k записей в сутки на пару, что в итоге раздуло Redis (очередь) до
+        // гигабайтов и уронило сервер. Логируем не более одной оценки на
+        // (стратегия, пара, таймфрейм, направление, бар).
+        if ($this->alreadyLogged($result)) {
+            return;
+        }
+
         try {
             $evaluation = StrategyEvaluation::create([
                 'symbol' => $result->symbol,
@@ -55,8 +64,10 @@ final class DatabaseStrategyLogger implements StrategyLoggerInterface
                 'evaluated_at' => now(),
             ]);
 
-            // If candles are available and chart rendering is enabled, render and attach chart
-            if ($this->chart !== null && ! empty($result->candles) && (bool) config('trading.chart.enabled', false)) {
+            // Графики ставим в очередь только для фактических входов (completed).
+            // Каждый job несёт массив свечей, поэтому partial-оценки (их десятки
+            // тысяч) превращали Redis-очередь в многогигабайтный балласт.
+            if ($result->isFullSignal && $this->chart !== null && ! empty($result->candles) && (bool) config('trading.chart.enabled', false)) {
                 if ((bool) config('trading.chart.queue', true)) {
                     RenderEvaluationChartJob::dispatch($evaluation->id, $result->candles);
                 } else {
@@ -72,5 +83,23 @@ final class DatabaseStrategyLogger implements StrategyLoggerInterface
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Оценка этого бара уже сохранена (агент пересканирует бар каждые 30 с).
+     */
+    private function alreadyLogged(StrategyEvaluationResult $result): bool
+    {
+        if ($result->candleOpenTime === null || $result->symbol === null || $result->interval === null) {
+            return false;
+        }
+
+        return StrategyEvaluation::query()
+            ->where('strategy', $result->strategy)
+            ->where('symbol', $result->symbol)
+            ->where('interval', $result->interval)
+            ->where('direction', $result->direction->value)
+            ->where('candle_open_time', $result->candleOpenTime)
+            ->exists();
     }
 }

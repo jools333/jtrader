@@ -353,7 +353,9 @@ final class LevelRetestStrategy implements EntryStrategyInterface
             symbol: $ctx->symbol,
             interval: $ctx->interval,
             candleOpenTime: intdiv((int) $retest->openTime, 1000),
-            candles: $candles,
+            // Свечи нужны только для графика реального входа; partial-оценки
+            // не рендерятся, а их payload в очереди весил десятки килобайт.
+            candles: $isFull ? $candles : null,
         );
     }
 

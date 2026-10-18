@@ -13,9 +13,11 @@ use App\Trading\Agent\TradingAgent;
 use App\Trading\DTO\CriterionResult;
 use App\Trading\DTO\StrategyEvaluationResult;
 use App\Trading\Enums\Direction;
+use App\Trading\Charting\ChartRenderer;
 use App\Trading\Services\DatabaseStrategyLogger;
 use App\Trading\Strategies\Entry\BounceStrategy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class StrategyEvaluationTest extends TestCase
@@ -110,6 +112,71 @@ class StrategyEvaluationTest extends TestCase
         $this->assertNotNull($eval);
         $this->assertSame(['Компрессия'], $eval->missing_criteria);
         $this->assertArrayHasKey('prior_peak', $eval->criteria_breakdown);
+    }
+
+    public function test_database_logger_deduplicates_the_same_candle(): void
+    {
+        $logger = new DatabaseStrategyLogger(50.0);
+
+        $result = new StrategyEvaluationResult(
+            strategy: 'LEVEL_RETEST',
+            direction: Direction::Long,
+            score: 100.0,
+            passedCount: 6,
+            totalCount: 6,
+            isFullSignal: true,
+            entrySignal: null,
+            level: 111.2,
+            atr: 1.1,
+            currentPrice: 111.85,
+            criteria: [],
+            missingCriteria: [],
+            symbol: 'SOL-USDT',
+            interval: '1h',
+            candleOpenTime: 1_700_000_000_000,
+        );
+
+        // Агент сканирует каждые 30 секунд и видит тот же закрытый бар много раз.
+        $logger->log($result);
+        $logger->log($result);
+        $logger->log($result);
+
+        $this->assertDatabaseCount('strategy_evaluations', 1);
+    }
+
+    public function test_partial_evaluation_does_not_queue_a_chart_job(): void
+    {
+        Queue::fake();
+        config(['trading.chart.enabled' => true]);
+
+        $logger = new DatabaseStrategyLogger(50.0, new ChartRenderer(['enabled' => true]));
+
+        $partial = new StrategyEvaluationResult(
+            strategy: 'LEVEL_RETEST',
+            direction: Direction::Short,
+            score: 66.7,
+            passedCount: 4,
+            totalCount: 6,
+            isFullSignal: false,
+            entrySignal: null,
+            level: 111.2,
+            atr: 1.1,
+            currentPrice: 111.85,
+            criteria: [],
+            missingCriteria: ['Ретест пробитого уровня'],
+            symbol: 'LINK-USDT',
+            interval: '1h',
+            candleOpenTime: 1_700_000_000_000,
+            candles: [$this->candle(111.0, 111.5, 110.9, 111.2)],
+        );
+
+        $logger->log($partial);
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('strategy_evaluations', [
+            'symbol' => 'LINK-USDT',
+            'status' => 'partial',
+        ]);
     }
 
     public function test_database_logger_ignores_evaluations_below_threshold(): void

@@ -33,7 +33,10 @@ class RenderStrategyOutcomes extends Command
         $limit = (int) ($this->option('limit') ?: config('trading.outcome_chart.limit', 5));
         $useQueue = ! $this->option('sync') && (bool) config('trading.outcome_chart.queue', true);
 
+        // Разбираем только реальные входы: partial-оценок в базе десятки тысяч,
+        // и очередь графиков по ним раздувала Redis до гигабайтов.
         $evaluations = StrategyEvaluation::query()
+            ->completed()
             ->whereNull('outcome_chart_path')
             ->whereNotNull('symbol')
             ->whereNotNull('interval')
