@@ -18,6 +18,7 @@ use App\Trading\DTO\IndicatorSnapshot;
 use App\Trading\DTO\PositionState;
 use App\Trading\Enums\Direction;
 use App\Trading\Enums\ExitType;
+use App\Trading\Enums\SignalType;
 use App\Trading\Services\DailyPositionReportService;
 use App\Trading\Support\ContractPrecision;
 use Illuminate\Support\Carbon;
@@ -290,8 +291,8 @@ final class PositionManager
             target1: $position->target1,
             target2: $position->target2,
             size: $position->size,
-            // A reduced size means T1 already banked profit and the stop is at break-even.
-            breakevenSet: $position->size < 1.0,
+            // A reduced size means T1 already banked profit, or dynamic BE has been set.
+            breakevenSet: $position->size < 1.0 || (bool) ($position->exit_context['protection']['breakeven_set'] ?? false),
             openedAt: $position->opened_at,
             signalType: $position->signal_type,
         );
@@ -558,16 +559,7 @@ final class PositionManager
             return null;
         }
 
-        // Сделки «пробой + ретест» держатся до цели 2R: подтяжка стопа в
-        // безубыток/трейлинг обрезала бы прибыль и ломала бы ожидание.
         $agentConfig = (array) ($this->config['agent'] ?? []);
-        $skipSignals = (array) ($agentConfig['dynamic_protection_skip_signals']
-            ?? $this->config['dynamic_protection_skip_signals']
-            ?? []);
-        if ($skipSignals !== [] && in_array((string) $position->signal_type, $skipSignals, true)) {
-            return null;
-        }
-
         $isLong = $position->direction() === Direction::Long;
         $entry = $position->entry_price;
 
@@ -578,51 +570,127 @@ final class PositionManager
 
         $newStop = null;
         $reason = null;
+        $initialStop = null;
 
-        // 1. Trailing Stop Check (Highest Priority Protection when profit >= trailing_trigger_pct)
-        $trailingEnabled = (bool) ($agentConfig['trailing_stop_enabled'] ?? $this->config['trailing_stop_enabled'] ?? true);
-        $trailingTrigger = (float) ($agentConfig['trailing_trigger_pct'] ?? $this->config['trailing_trigger_pct'] ?? 0.40);
-        $trailingDistance = (float) ($agentConfig['trailing_distance_pct'] ?? $this->config['trailing_distance_pct'] ?? 0.20) / 100.0;
-
-        if ($trailingEnabled && $profitPct >= $trailingTrigger) {
-            $candidateTrailingStop = $isLong
-                ? $price * (1.0 - $trailingDistance)
-                : $price * (1.0 + $trailingDistance);
-
-            // For Long, trailing stop must be higher than current stop
-            // For Short, trailing stop must be lower than current stop
-            $isBetter = $isLong
-                ? ($candidateTrailingStop > $position->stop_price)
-                : ($candidateTrailingStop < $position->stop_price);
-
-            if ($isBetter) {
-                $newStop = $candidateTrailingStop;
-                $reason = 'trailing_stop';
+        // 1. LEVEL_RETEST: защита по R-множителям (Smart Break-Even при >= 1.0R, Lock Profit при >= 1.4R)
+        $isLevelRetest = $position->signal_type === SignalType::LevelRetest->value || $position->signal_type === 'LEVEL_RETEST';
+        if ($isLevelRetest) {
+            $beEnabled = (bool) ($agentConfig['level_retest_be_enabled'] ?? $this->config['level_retest_be_enabled'] ?? true);
+            if (! $beEnabled) {
+                return null;
             }
-        }
 
-        // 2. Break-Even Check (if trailing didn't trigger, or trailing stop is worse than BE)
-        $beEnabled = (bool) ($agentConfig['break_even_enabled'] ?? $this->config['break_even_enabled'] ?? true);
-        $beTrigger = (float) ($agentConfig['break_even_trigger_pct'] ?? $this->config['break_even_trigger_pct'] ?? 0.25);
-        $beBuffer = (float) ($agentConfig['break_even_buffer_pct'] ?? $this->config['break_even_buffer_pct'] ?? 0.11) / 100.0;
-
-        if ($newStop === null && $beEnabled && $profitPct >= $beTrigger) {
-            $candidateBeStop = $isLong
-                ? $entry * (1.0 + $beBuffer)
-                : $entry * (1.0 - $beBuffer);
-
-            $isBetter = $isLong
-                ? ($candidateBeStop > $position->stop_price)
-                : ($candidateBeStop < $position->stop_price);
-
-            if ($isBetter) {
-                $newStop = $candidateBeStop;
-                $reason = 'break_even';
+            // Исходная дистанция риска в R (1.0R = |entry - initial_stop|)
+            $initialStop = (float) (
+                $position->entry_context['signal']['stop']
+                ?? $position->exit_context['protection']['initial_stop']
+                ?? $position->stop_price
+            );
+            $riskUnit = abs($entry - $initialStop);
+            if ($riskUnit <= 0.0 && (float) $position->target1 > 0.0) {
+                $riskUnit = abs((float) $position->target1 - $entry) / 2.0;
             }
-        }
+            if ($riskUnit <= 0.0) {
+                return null;
+            }
 
-        if ($newStop === null) {
-            return null;
+            $profitUnits = $isLong ? ($price - $entry) : ($entry - $price);
+            $profitR = $profitUnits / $riskUnit;
+
+            // 1a. Lock Profit при достижении lock_trigger_r (по умолчанию 1.4R -> стоп подтягивается на +0.70R)
+            $lockEnabled = (bool) ($agentConfig['level_retest_lock_profit_enabled'] ?? $this->config['level_retest_lock_profit_enabled'] ?? true);
+            $lockTriggerR = (float) ($agentConfig['level_retest_lock_trigger_r'] ?? $this->config['level_retest_lock_trigger_r'] ?? 1.4);
+            $lockStopR = (float) ($agentConfig['level_retest_lock_stop_r'] ?? $this->config['level_retest_lock_stop_r'] ?? 0.70);
+
+            if ($lockEnabled && $profitR >= $lockTriggerR) {
+                $candidateStop = $isLong
+                    ? $entry + $lockStopR * $riskUnit
+                    : $entry - $lockStopR * $riskUnit;
+
+                $isBetter = $isLong
+                    ? ($candidateStop > $position->stop_price)
+                    : ($candidateStop < $position->stop_price);
+
+                if ($isBetter) {
+                    $newStop = $candidateStop;
+                    $reason = 'lock_profit';
+                }
+            }
+
+            // 1b. Smart Break-Even при достижении be_trigger_r (по умолчанию 1.0R -> стоп на entry +- buffer)
+            $beTriggerR = (float) ($agentConfig['level_retest_be_trigger_r'] ?? $this->config['level_retest_be_trigger_r'] ?? 1.0);
+            $beBufferPct = (float) ($agentConfig['level_retest_be_buffer_pct'] ?? $this->config['level_retest_be_buffer_pct'] ?? 0.12) / 100.0;
+
+            if ($newStop === null && $profitR >= $beTriggerR) {
+                $candidateBeStop = $isLong
+                    ? $entry * (1.0 + $beBufferPct)
+                    : $entry * (1.0 - $beBufferPct);
+
+                $isBetter = $isLong
+                    ? ($candidateBeStop > $position->stop_price)
+                    : ($candidateBeStop < $position->stop_price);
+
+                if ($isBetter) {
+                    $newStop = $candidateBeStop;
+                    $reason = 'break_even';
+                }
+            }
+
+            if ($newStop === null) {
+                return null;
+            }
+        } else {
+            // Для legacy сигналов: проверяем skip-лист
+            $skipSignals = (array) ($agentConfig['dynamic_protection_skip_signals']
+                ?? $this->config['dynamic_protection_skip_signals']
+                ?? []);
+            if ($skipSignals !== [] && in_array((string) $position->signal_type, $skipSignals, true)) {
+                return null;
+            }
+
+            // 1. Trailing Stop Check (Highest Priority Protection when profit >= trailing_trigger_pct)
+            $trailingEnabled = (bool) ($agentConfig['trailing_stop_enabled'] ?? $this->config['trailing_stop_enabled'] ?? true);
+            $trailingTrigger = (float) ($agentConfig['trailing_trigger_pct'] ?? $this->config['trailing_trigger_pct'] ?? 0.40);
+            $trailingDistance = (float) ($agentConfig['trailing_distance_pct'] ?? $this->config['trailing_distance_pct'] ?? 0.20) / 100.0;
+
+            if ($trailingEnabled && $profitPct >= $trailingTrigger) {
+                $candidateTrailingStop = $isLong
+                    ? $price * (1.0 - $trailingDistance)
+                    : $price * (1.0 + $trailingDistance);
+
+                $isBetter = $isLong
+                    ? ($candidateTrailingStop > $position->stop_price)
+                    : ($candidateTrailingStop < $position->stop_price);
+
+                if ($isBetter) {
+                    $newStop = $candidateTrailingStop;
+                    $reason = 'trailing_stop';
+                }
+            }
+
+            // 2. Break-Even Check (if trailing didn't trigger, or trailing stop is worse than BE)
+            $beEnabled = (bool) ($agentConfig['break_even_enabled'] ?? $this->config['break_even_enabled'] ?? true);
+            $beTrigger = (float) ($agentConfig['break_even_trigger_pct'] ?? $this->config['break_even_trigger_pct'] ?? 0.25);
+            $beBuffer = (float) ($agentConfig['break_even_buffer_pct'] ?? $this->config['break_even_buffer_pct'] ?? 0.11) / 100.0;
+
+            if ($newStop === null && $beEnabled && $profitPct >= $beTrigger) {
+                $candidateBeStop = $isLong
+                    ? $entry * (1.0 + $beBuffer)
+                    : $entry * (1.0 - $beBuffer);
+
+                $isBetter = $isLong
+                    ? ($candidateBeStop > $position->stop_price)
+                    : ($candidateBeStop < $position->stop_price);
+
+                if ($isBetter) {
+                    $newStop = $candidateBeStop;
+                    $reason = 'break_even';
+                }
+            }
+
+            if ($newStop === null) {
+                return null;
+            }
         }
 
         // 3. Minimum shift threshold check (avoid spamming exchange API for micro-shifts)
@@ -651,11 +719,19 @@ final class PositionManager
 
         // Update stop in database
         $exitContext = (array) ($position->exit_context ?? []);
-        $exitContext['protection'] = [
+        $protectionContext = [
             'reason' => $reason,
             'profit_pct' => round($profitPct, 3),
+            'breakeven_set' => true,
             'updated_at' => Carbon::now()->toIso8601String(),
         ];
+        if ($initialStop !== null && $initialStop > 0.0) {
+            $protectionContext['initial_stop'] = $initialStop;
+        } elseif (isset($exitContext['protection']['initial_stop'])) {
+            $protectionContext['initial_stop'] = $exitContext['protection']['initial_stop'];
+        }
+
+        $exitContext['protection'] = $protectionContext;
 
         $position->update([
             'stop_price' => $newStop,

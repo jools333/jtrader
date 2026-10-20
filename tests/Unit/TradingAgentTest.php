@@ -569,6 +569,27 @@ class TradingAgentTest extends TestCase
         $this->assertSame(100, $exit->closePercent);
     }
 
+    public function test_level_retest_target_is_closed_even_if_breakeven_set(): void
+    {
+        $candles = $this->baseline(55, 95, 100); // last close = 100
+
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 90.0,
+            stopPrice: 90.1,
+            target1: 99.0,
+            target2: 99.0,
+            signalType: SignalType::LevelRetest->value,
+            breakevenSet: true,
+        );
+
+        $exit = $this->agent()->evaluate($candles, 90.0, 10.0, $position)->exitSignal;
+
+        $this->assertNotNull($exit);
+        $this->assertSame(ExitType::Target1, $exit->type);
+        $this->assertSame(100, $exit->closePercent);
+    }
+
     public function test_level_retest_time_stop_closes_stale_position(): void
     {
         $candles = $this->baseline(55, 95, 100); // last close = 100

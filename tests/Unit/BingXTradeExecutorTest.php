@@ -18,6 +18,20 @@ final class BingXTradeExecutorTest extends TestCase
     {
         Http::fake([
             'https://open-api.bingx.com/openApi/swap/v2/trade/allOpenOrders*' => Http::response(['code' => 0, 'data' => []]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 123456790,
+                            'symbol' => 'ADA-USDT',
+                            'positionSide' => 'SHORT',
+                            'type' => 'STOP_MARKET',
+                            'stopPrice' => 0.2555,
+                        ],
+                    ],
+                ],
+            ]),
             'https://open-api.bingx.com/openApi/swap/v2/trade/order*' => Http::response([
                 'code' => 0,
                 'data' => ['order' => ['orderId' => 123456789]],
@@ -101,6 +115,51 @@ final class BingXTradeExecutorTest extends TestCase
             $this->assertSame(120.209, (float) $data['stopPrice']);
 
             return true;
+        });
+    }
+
+    public function test_open_position_places_dedicated_stop_if_bracket_stop_missing_on_exchange(): void
+    {
+        Http::fake([
+            'https://open-api.bingx.com/openApi/swap/v2/trade/allOpenOrders*' => Http::response(['code' => 0, 'data' => []]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/openOrders*' => Http::response(['code' => 0, 'data' => ['orders' => []]]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 0,
+                'data' => ['order' => ['orderId' => 123456789]],
+            ]),
+        ]);
+
+        $executor = new BingXTradeExecutor(
+            http: $this->app->make(\Illuminate\Http\Client\Factory::class),
+            config: [
+                'api_key' => 'fake-key',
+                'api_secret' => 'fake-secret',
+                'entry_order_type' => 'MARKET',
+                'base_url' => 'https://open-api.bingx.com',
+            ],
+        );
+
+        $signal = new EntrySignal(
+            type: SignalType::Bounce,
+            direction: Direction::Short,
+            entryPrice: 0.2543,
+            stop: 0.255502475,
+            target1: 0.251896321,
+            target2: 0.249492100,
+            rrRatio: 2.0,
+        );
+
+        $res = $executor->openPosition($signal, 'ADA-USDT', 11529.85);
+        $this->assertTrue($res->ok);
+
+        // A second order request must have been sent specifically for the STOP_MARKET fallback
+        Http::assertSent(function (Request $request) {
+            if (! str_contains($request->url(), '/openApi/swap/v2/trade/order')) {
+                return false;
+            }
+            $data = $request->data();
+
+            return ($data['type'] ?? '') === 'STOP_MARKET' && (float) ($data['stopPrice'] ?? 0) === 0.2555;
         });
     }
 }

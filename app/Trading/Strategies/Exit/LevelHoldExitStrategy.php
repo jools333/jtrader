@@ -42,7 +42,7 @@ final class LevelHoldExitStrategy implements ExitStrategyInterface
                 ? $price >= $position->target1
                 : $price <= $position->target1;
 
-            if ($hit && ! $position->breakevenSet) {
+            if ($hit) {
                 return new ExitSignal(ExitType::Target1, 100);
             }
         }

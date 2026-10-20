@@ -136,9 +136,17 @@ return [
         'level_retest_max_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MAX_STOP_PCT', 1.80), // макс. стоп (% цены)
         'level_retest_target_r' => (float) env('TRADING_LEVEL_RETEST_TARGET_R', 2.0), // цель в R
         'level_retest_max_hold_hours' => (int) env('TRADING_LEVEL_RETEST_MAX_HOLD_HOURS', 16), // тайм-стоп (часов)
-        // Динамическая защита (BE/трейлинг) не применяется к этим типам сигналов:
-        // они держатся до цели, ранняя подтяжка стопа режет прибыль.
-        'dynamic_protection_skip_signals' => ['LEVEL_RETEST'],
+        // Динамическая защита для сетапов LevelRetest («пробой диапазона + ретест»):
+        // Работает по R-множителям (не по мелким % как в 5m скальпинге):
+        // При +1.0R стоп переносится в безубыток (+0.12% от входа для гарантии покрытия комиссий).
+        // При +1.4R стоп фиксирует гарантированную прибыль (+0.70R), защищая от разворота перед тейком 2R.
+        'level_retest_be_enabled' => (bool) env('TRADING_LEVEL_RETEST_BE_ENABLED', true),
+        'level_retest_be_trigger_r' => (float) env('TRADING_LEVEL_RETEST_BE_TRIGGER_R', 1.0), // перенос в БУ при достижении 1.0R прибыли
+        'level_retest_be_buffer_pct' => (float) env('TRADING_LEVEL_RETEST_BE_BUFFER_PCT', 0.12), // отступ за точку входа для покрытия комиссий (%)
+        'level_retest_lock_profit_enabled' => (bool) env('TRADING_LEVEL_RETEST_LOCK_PROFIT_ENABLED', true),
+        'level_retest_lock_trigger_r' => (float) env('TRADING_LEVEL_RETEST_LOCK_TRIGGER_R', 1.4), // фиксация части прибыли при 1.4R
+        'level_retest_lock_stop_r' => (float) env('TRADING_LEVEL_RETEST_LOCK_STOP_R', 0.70), // уровень нового стопа при фиксации прибыли (+0.70R)
+        'dynamic_protection_skip_signals' => [],
 
         /*
         |----------------------------------------------------------------------

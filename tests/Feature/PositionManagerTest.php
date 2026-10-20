@@ -64,7 +64,10 @@ class PositionManagerTest extends TestCase
      */
     private function agent(): TradingAgent
     {
-        $config = (array) config('trading.agent');
+        $config = array_merge((array) config('trading.agent'), [
+            'alt_htf_filter_enabled' => false,
+            'btc_filter_enabled' => false,
+        ]);
 
         return new TradingAgent(
             config: $config,
@@ -486,6 +489,152 @@ class PositionManagerTest extends TestCase
         $this->assertNull($retraceStop);
         $pos->refresh();
         $this->assertEqualsWithDelta(9.9198, $pos->stop_price, 0.001);
+    }
+
+    public function test_level_retest_smart_break_even_at_1r(): void
+    {
+        // Open LONG position under LEVEL_RETEST: entry 100.0, stop 98.0 (1.0R = 2.0), target 104.0 (2.0R)
+        $pos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'LONG',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 98.0,
+            'target1' => 104.0,
+            'target2' => 104.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(30),
+        ]);
+
+        $manager = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'agent' => [
+                    'level_retest_be_enabled' => true,
+                    'level_retest_be_trigger_r' => 1.0,
+                    'level_retest_be_buffer_pct' => 0.12,
+                    'level_retest_lock_profit_enabled' => true,
+                    'level_retest_lock_trigger_r' => 1.4,
+                    'level_retest_lock_stop_r' => 0.70,
+                ],
+            ]),
+        );
+
+        // At 101.5 (+0.75R), 1.0R trigger is not met -> no change
+        $newStop = $manager->manageDynamicProtection($pos, 101.5);
+        $this->assertNull($newStop);
+        $pos->refresh();
+        $this->assertEquals(98.0, $pos->stop_price);
+        $this->assertNull($pos->exit_context['protection']['breakeven_set'] ?? null);
+
+        // At 102.05 (+1.025R), 1.0R trigger is met -> stop moves to entry * (1 + 0.12%) = 100.12
+        $newStop = $manager->manageDynamicProtection($pos, 102.05);
+        $this->assertNotNull($newStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(100.12, $pos->stop_price, 0.01);
+        $this->assertTrue((bool) ($pos->exit_context['protection']['breakeven_set'] ?? false));
+        $this->assertSame('break_even', $pos->exit_context['protection']['reason']);
+    }
+
+    public function test_level_retest_lock_profit_at_1_4r(): void
+    {
+        $pos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'LONG',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 100.12, // already at BE
+            'target1' => 104.0,
+            'target2' => 104.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'entry_context' => [
+                'signal' => [
+                    'stop' => 98.0, // initial 1.0R = 2.0
+                ],
+            ],
+            'opened_at' => now()->subMinutes(60),
+        ]);
+
+        $manager = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'agent' => [
+                    'level_retest_be_enabled' => true,
+                    'level_retest_lock_profit_enabled' => true,
+                    'level_retest_lock_trigger_r' => 1.4,
+                    'level_retest_lock_stop_r' => 0.70,
+                ],
+            ]),
+        );
+
+        // At 102.9 (+1.45R >= 1.4R) -> stop moves to entry + 0.70 * 2.0 = 101.40
+        $newStop = $manager->manageDynamicProtection($pos, 102.9);
+        $this->assertNotNull($newStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(101.40, $pos->stop_price, 0.01);
+        $this->assertSame('lock_profit', $pos->exit_context['protection']['reason']);
+
+        // Retracement does not worsen the locked stop
+        $retraceStop = $manager->manageDynamicProtection($pos, 102.0);
+        $this->assertNull($retraceStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(101.40, $pos->stop_price, 0.01);
+    }
+
+    public function test_level_retest_short_protection(): void
+    {
+        // SHORT: entry 100.0, stop 102.0 (1.0R = 2.0)
+        $pos = Position::create([
+            'symbol' => 'XRP-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 102.0,
+            'target1' => 96.0,
+            'target2' => 96.0,
+            'quantity' => 10.0,
+            'size' => 10.0,
+            'opened_at' => now()->subMinutes(40),
+        ]);
+
+        $manager = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'agent' => [
+                    'level_retest_be_enabled' => true,
+                    'level_retest_be_trigger_r' => 1.0,
+                    'level_retest_be_buffer_pct' => 0.12,
+                    'level_retest_lock_profit_enabled' => true,
+                    'level_retest_lock_trigger_r' => 1.4,
+                    'level_retest_lock_stop_r' => 0.70,
+                ],
+            ]),
+        );
+
+        // At 97.9 (+1.05R): BE triggers -> stop = 100.0 * (1 - 0.0012) = 99.88
+        $newStop = $manager->manageDynamicProtection($pos, 97.9);
+        $this->assertNotNull($newStop);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(99.88, $pos->stop_price, 0.01);
+        $this->assertSame('break_even', $pos->exit_context['protection']['reason']);
+
+        // At 97.0 (+1.50R >= 1.4R): Lock profit triggers -> stop = 100.0 - 0.70 * 2.0 = 98.60
+        $newStop2 = $manager->manageDynamicProtection($pos, 97.0);
+        $this->assertNotNull($newStop2);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(98.60, $pos->stop_price, 0.01);
+        $this->assertSame('lock_profit', $pos->exit_context['protection']['reason']);
     }
 
     public function test_max_positions_per_direction_blocks_duplicate_directional_entries(): void
