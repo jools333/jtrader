@@ -54,6 +54,18 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         return rtrim((string) $url, '/');
     }
 
+    /** Configured HTTP client for signed BingX endpoints with guaranteed IPv4 resolution. */
+    private function client(): \Illuminate\Http\Client\PendingRequest
+    {
+        $key = (string) ($this->config['api_key'] ?? '');
+
+        return $this->http
+            ->baseUrl($this->baseUrl())
+            ->timeout((int) ($this->config['timeout'] ?? 15))
+            ->withHeaders(['X-BX-APIKEY' => $key])
+            ->withOptions(['force_ip_resolve' => 'v4']);
+    }
+
     public function openPosition(EntrySignal $signal, string $symbol, float $quantity): OrderResult
     {
         // Cancel any lingering open/limit orders for this symbol before placing a new one.
@@ -245,10 +257,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $signature = hash_hmac('sha256', $query, $secret);
 
         try {
-            $response = $this->http
-                ->baseUrl($this->baseUrl())
-                ->timeout((int) ($this->config['timeout'] ?? 15))
-                ->withHeaders(['X-BX-APIKEY' => $key])
+            $response = $this->client()
                 ->get('/openApi/swap/v2/user/positions', $params + ['signature' => $signature]);
 
             $payload = (array) $response->json();
@@ -288,10 +297,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $signature = hash_hmac('sha256', $query, $secret);
 
         try {
-            $response = $this->http
-                ->baseUrl($this->baseUrl())
-                ->timeout((int) ($this->config['timeout'] ?? 15))
-                ->withHeaders(['X-BX-APIKEY' => $key])
+            $response = $this->client()
                 ->get('/openApi/swap/v2/trade/openOrders', $params + ['signature' => $signature]);
 
             $payload = (array) $response->json();
@@ -352,10 +358,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $signature = hash_hmac('sha256', $query, $secret);
 
         try {
-            $this->http
-                ->baseUrl($this->baseUrl())
-                ->timeout((int) ($this->config['timeout'] ?? 15))
-                ->withHeaders(['X-BX-APIKEY' => $key])
+            $this->client()
                 ->delete('/openApi/swap/v2/trade/order?'.$query.'&signature='.$signature);
         } catch (Throwable) {
             // best-effort
@@ -377,10 +380,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $signature = hash_hmac('sha256', $query, $secret);
 
         try {
-            $this->http
-                ->baseUrl($this->baseUrl())
-                ->timeout((int) ($this->config['timeout'] ?? 15))
-                ->withHeaders(['X-BX-APIKEY' => $key])
+            $this->client()
                 ->delete('/openApi/swap/v2/trade/allOpenOrders?'.$query.'&signature='.$signature);
         } catch (Throwable) {
             // best-effort
@@ -406,10 +406,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         $signature = hash_hmac('sha256', $query, $secret);
 
         try {
-            $response = $this->http
-                ->baseUrl($this->baseUrl())
-                ->timeout((int) ($this->config['timeout'] ?? 15))
-                ->withHeaders(['X-BX-APIKEY' => $key])
+            $response = $this->client()
                 ->asForm()
                 ->post($path.'?signature='.$signature, $params);
 

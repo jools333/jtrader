@@ -1024,6 +1024,7 @@ class BingXPositionSyncService
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
+                ->withOptions(['force_ip_resolve' => 'v4'])
                 ->get($path, $params + ['signature' => $signature]);
 
             return (array) $response->json();
@@ -1055,6 +1056,7 @@ class BingXPositionSyncService
                 ->baseUrl($this->baseUrl())
                 ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->withHeaders(['X-BX-APIKEY' => $key])
+                ->withOptions(['force_ip_resolve' => 'v4'])
                 ->delete('/openApi/swap/v2/trade/order?'.$query.'&signature='.$signature);
 
             $payload = (array) $response->json();
