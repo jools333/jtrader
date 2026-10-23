@@ -136,6 +136,8 @@ return [
         'level_retest_max_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MAX_STOP_PCT', 1.80), // макс. стоп (% цены)
         'level_retest_target_r' => (float) env('TRADING_LEVEL_RETEST_TARGET_R', 2.0), // цель в R
         'level_retest_max_hold_hours' => (int) env('TRADING_LEVEL_RETEST_MAX_HOLD_HOURS', 16), // тайм-стоп (часов)
+        'level_retest_max_signal_age_minutes' => (int) env('TRADING_LEVEL_RETEST_MAX_SIGNAL_AGE_MINUTES', 15), // макс. возраст закрытой 1h-свечи ретеста (мин) для входа
+        'level_retest_min_live_rr' => (float) env('TRADING_LEVEL_RETEST_MIN_LIVE_RR', 1.5), // мин. фактический R:R по текущей цене при открытии сделки
         // Динамическая защита для сетапов LevelRetest («пробой диапазона + ретест»):
         // Работает по R-множителям (не по мелким % как в 5m скальпинге):
         // При +1.0R стоп переносится в безубыток (+0.12% от входа для гарантии покрытия комиссий).

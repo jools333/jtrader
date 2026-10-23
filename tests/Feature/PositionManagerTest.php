@@ -848,4 +848,103 @@ class PositionManagerTest extends TestCase
 
         $this->assertNull($path);
     }
+
+    public function test_apply_exit_preserves_dynamic_protection_history_in_exit_context(): void
+    {
+        $position = Position::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 104.69,
+            'stop_price' => 105.68,
+            'target1' => 102.71,
+            'target2' => 102.71,
+            'quantity' => 30.0,
+            'size' => 1.0,
+            'entry_context' => ['signal' => ['stop' => 105.68]],
+            'opened_at' => now()->subHours(16),
+        ]);
+
+        $manager = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: (array) config('trading'),
+        );
+
+        // 1. Trigger Smart Break-Even (+1.0R)
+        $newStop = $manager->manageDynamicProtection($position, 103.65);
+        $this->assertNotNull($newStop);
+
+        $position->refresh();
+        $this->assertSame('break_even', $position->exit_context['protection']['reason'] ?? null);
+
+        // 2. Apply TimeStop exit and verify protection history is preserved
+        $exitSignal = new \App\Trading\DTO\ExitSignal(
+            type: \App\Trading\Enums\ExitType::TimeStop,
+            closePercent: 100,
+        );
+        $manager->applyExit($position, $exitSignal, 103.58);
+
+        $position->refresh();
+        $this->assertSame(Position::STATUS_CLOSED, $position->status);
+        $this->assertSame('break_even', $position->exit_context['protection']['reason'] ?? null);
+        $this->assertSame('TIME_STOP', $position->exit_context['exit']['exit_type'] ?? null);
+    }
+
+    public function test_level_retest_entry_is_skipped_when_live_rr_degrades_below_minimum(): void
+    {
+        $fixedSignal = new \App\Trading\DTO\EntrySignal(
+            type: \App\Trading\Enums\SignalType::LevelRetest,
+            direction: \App\Trading\Enums\Direction::Long,
+            entryPrice: 100.0,
+            stop: 99.0,
+            target1: 102.0,
+            target2: 102.0,
+            rrRatio: 2.0,
+            confluence: true,
+        );
+
+        $fakeAgent = new class($fixedSignal) implements \App\Trading\Contracts\TradingAgentInterface {
+            public function __construct(private readonly \App\Trading\DTO\EntrySignal $signal) {}
+
+            public function evaluate(
+                array $candles,
+                float $level,
+                ?float $atr = null,
+                ?\App\Trading\DTO\PositionState $position = null,
+                array $recentSignalTypes = [],
+                ?string $symbol = null,
+                ?string $interval = null,
+                ?array $btcCandles = null,
+                ?array $btcHtfCandles = null,
+            ): \App\Trading\DTO\AgentResult {
+                return new \App\Trading\DTO\AgentResult(
+                    entrySignal: $this->signal,
+                    exitSignal: null,
+                    indicators: new \App\Trading\DTO\IndicatorSnapshot(100.0, 99.5, 99.0, 0.1, 0.05, 0.05, 1.0),
+                );
+            }
+        };
+
+        $manager = new PositionManager(
+            agent: $fakeAgent,
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'min_entry_interval_minutes' => 0,
+                'entry_cooldown_minutes' => 0,
+            ]),
+        );
+
+        // Chased price 101.0 -> liveRisk = 2.0, liveReward = 1.0 -> live R:R = 0.50 (< 1.5) -> blocked!
+        $chasedCandles = [new \App\Market\DTO\Candle(1_700_000_000_000, 100.0, 101.2, 99.9, 101.0, 100.0, 1_700_003_599_999)];
+        $manager->process('ETH-USDT', '1h', $chasedCandles, 100.0, 1.0);
+        $this->assertDatabaseCount('positions', 0);
+
+        // Fresh price 100.1 -> liveRisk = 1.1, liveReward = 1.9 -> live R:R = 1.73 (>= 1.5) -> allowed!
+        $freshCandles = [new \App\Market\DTO\Candle(1_700_000_000_000, 100.0, 100.2, 99.9, 100.1, 100.0, 1_700_003_599_999)];
+        $manager->process('ETH-USDT', '1h', $freshCandles, 100.0, 1.0);
+        $this->assertDatabaseCount('positions', 1);
+    }
 }

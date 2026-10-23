@@ -99,6 +99,7 @@ final class TradingAgent implements TradingAgentInterface
                 targetR: (float) ($this->config['level_retest_target_r'] ?? 2.0),
                 minEntryScore: 100.0,
                 requiredInterval: (string) ($this->config['level_retest_interval'] ?? '1h'),
+                maxSignalAgeMinutes: (int) ($this->config['level_retest_max_signal_age_minutes'] ?? 15),
             );
         }
 

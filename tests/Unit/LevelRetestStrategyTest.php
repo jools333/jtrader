@@ -220,4 +220,26 @@ class LevelRetestStrategyTest extends TestCase
         $this->assertNotNull($signal);
         $this->assertSame(Direction::Long, $signal->direction);
     }
+
+    public function test_stale_signal_older_than_max_age_is_rejected_while_fresh_signal_passes(): void
+    {
+        $candles = $this->setupCandles();
+        $lastCandle = end($candles);
+        $closeTimeSec = intdiv($lastCandle->openTime, 1000) + 3600;
+        $strategy = new LevelRetestStrategy(maxSignalAgeMinutes: 15);
+
+        try {
+            // 1. Свежий сигнал (2 минуты после закрытия часовой свечи) -> вход разрешён
+            \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::createFromTimestamp($closeTimeSec + 120));
+            $freshSignal = $strategy->evaluate($this->context($candles), new TradePlanner);
+            $this->assertNotNull($freshSignal);
+
+            // 2. Устаревший сигнал (40 минут после закрытия часовой свечи) -> вход заблокирован
+            \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::createFromTimestamp($closeTimeSec + 2400));
+            $staleSignal = $strategy->evaluate($this->context($candles), new TradePlanner);
+            $this->assertNull($staleSignal);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
 }

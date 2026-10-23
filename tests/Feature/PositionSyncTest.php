@@ -535,5 +535,188 @@ class PositionSyncTest extends TestCase
         // Must NOT cancel the active SL order
         Http::assertNotSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'orderId=sl_active_777'));
     }
+
+    public function test_sync_does_not_close_open_position_on_transient_empty_positions_response_without_close_evidence(): void
+    {
+        $pos = Position::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 104.69,
+            'stop_price' => 105.68,
+            'target1' => 102.71,
+            'target2' => 102.71,
+            'quantity' => 30.08,
+            'size' => 1.0,
+            'entry_order_id' => 'sol_entry_608',
+            'external_id' => 'sol_pos_608',
+            'opened_at' => now()->subMinutes(38),
+        ]);
+
+        // BingX transiently returns empty data:[] on /user/positions, while SL bracket is still open
+        // and no closing order or realized PnL exists in allOrders / income.
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response(['code' => 0, 'data' => []]),
+            '*/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'sl_sol_608',
+                            'symbol' => 'SOL-USDT',
+                            'side' => 'BUY',
+                            'positionSide' => 'SHORT',
+                            'type' => 'STOP_MARKET',
+                            'stopPrice' => '105.68',
+                            'time' => now()->subMinutes(38)->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'sol_entry_608',
+                            'positionID' => 'sol_pos_608',
+                            'symbol' => 'SOL-USDT',
+                            'side' => 'SELL',
+                            'positionSide' => 'SHORT',
+                            'type' => 'MARKET',
+                            'status' => 'FILLED',
+                            'avgPrice' => '104.69',
+                            'executedQty' => '30.08',
+                            'profit' => '0.00',
+                            'commission' => '-1.57',
+                            'time' => now()->subMinutes(38)->getTimestampMs(),
+                            'updateTime' => now()->subMinutes(38)->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/user/income*' => Http::response(['code' => 0, 'data' => []]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $result = $service->sync(targetSymbol: 'SOL-USDT');
+
+        // Must NOT close the position or cancel its active STOP_MARKET order
+        $this->assertEquals(0, $result->closed);
+        $pos->refresh();
+        $this->assertEquals(Position::STATUS_OPEN, $pos->status);
+        Http::assertNotSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), 'orderId=sl_sol_608'));
+    }
+
+    public function test_sync_captures_funding_fees_for_16h_position_closed_after_prior_sync(): void
+    {
+        $openedAt = now()->subHours(17);
+        $closedAt = $openedAt->copy()->addHours(16);
+
+        // Simulate a position that was synced while open (synced_at < closed_at) and then closed by TIME_STOP at 16h
+        $pos = Position::create([
+            'symbol' => 'SOL-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_CLOSED,
+            'entry_price' => 104.69,
+            'stop_price' => 104.56,
+            'target1' => 102.71,
+            'target2' => 102.71,
+            'quantity' => 30.08,
+            'size' => 1.0,
+            'entry_order_id' => 'sol_entry_16h',
+            'external_id' => 'sol_pos_16h',
+            'exit_type' => 'TIME_STOP',
+            'exit_reason' => 'time_stop',
+            'exit_price' => 103.586,
+            'realized_pnl' => 33.21,
+            'commission' => 1.57,
+            'funding_fee' => -0.0445,
+            'opened_at' => $openedAt,
+            'closed_at' => $closedAt,
+            'synced_at' => $closedAt->copy()->subMinute(),
+        ]);
+
+        Http::fake([
+            '*/openApi/swap/v2/user/positions*' => Http::response(['code' => 0, 'data' => []]),
+            '*/openApi/swap/v2/trade/openOrders*' => Http::response(['code' => 0, 'data' => ['orders' => []]]),
+            '*/openApi/swap/v2/trade/allOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 'sol_entry_16h',
+                            'positionID' => 'sol_pos_16h',
+                            'symbol' => 'SOL-USDT',
+                            'side' => 'SELL',
+                            'positionSide' => 'SHORT',
+                            'type' => 'MARKET',
+                            'status' => 'FILLED',
+                            'avgPrice' => '104.69',
+                            'executedQty' => '30.08',
+                            'profit' => '0.00',
+                            'commission' => '-1.5745',
+                            'time' => $openedAt->getTimestampMs(),
+                            'updateTime' => $openedAt->getTimestampMs(),
+                        ],
+                        [
+                            'orderId' => 'sol_exit_16h',
+                            'positionID' => 'sol_pos_16h',
+                            'symbol' => 'SOL-USDT',
+                            'side' => 'BUY',
+                            'positionSide' => 'SHORT',
+                            'type' => 'MARKET',
+                            'status' => 'FILLED',
+                            'avgPrice' => '103.495',
+                            'executedQty' => '30.08',
+                            'profit' => '35.9456',
+                            'commission' => '-1.5566',
+                            'reduceOnly' => true,
+                            'time' => $closedAt->getTimestampMs(),
+                            'updateTime' => $closedAt->getTimestampMs(),
+                        ],
+                    ],
+                ],
+            ]),
+            '*/openApi/swap/v2/user/income*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    [
+                        'symbol' => 'SOL-USDT',
+                        'incomeType' => 'FUNDING_FEE',
+                        'income' => '-0.0445',
+                        'time' => $openedAt->copy()->addHours(2)->getTimestampMs(),
+                    ],
+                    [
+                        'symbol' => 'SOL-USDT',
+                        'incomeType' => 'FUNDING_FEE',
+                        'income' => '-0.1197',
+                        'time' => $openedAt->copy()->addHours(10)->getTimestampMs(),
+                    ],
+                ],
+            ]),
+        ]);
+
+        $service = new BingXPositionSyncService(
+            http: app(\Illuminate\Http\Client\Factory::class),
+            config: $this->bingxConfig,
+        );
+
+        $service->sync(targetSymbol: 'SOL-USDT');
+
+        $pos->refresh();
+        $this->assertEqualsWithDelta(35.9456, $pos->realized_pnl, 0.001);
+        $this->assertEqualsWithDelta(3.1311, $pos->commission, 0.001);
+        $this->assertEqualsWithDelta(-0.1642, $pos->funding_fee, 0.001);
+        $this->assertEquals('time_stop', $pos->exit_reason);
+    }
 }
 

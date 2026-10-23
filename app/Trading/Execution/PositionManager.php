@@ -80,6 +80,7 @@ final class PositionManager
         } elseif ($open === null
             && $result->entrySignal !== null
             && ! $isExcluded
+            && $this->hasSufficientLiveRiskReward($result->entrySignal, $this->currentPrice($candles))
             && ! $this->hasReachedMaxOpenPositions()
             && ! $this->hasReachedMaxPositionsInDirection($result->entrySignal->direction->value)
             && ! $this->hasRecentPortfolioEntry()
@@ -193,10 +194,11 @@ final class PositionManager
         $closeOrder = $this->executor->closePosition($position->symbol, $position->direction(), $exit->closePercent);
         $filledAt = $closeOrder->filledPrice() ?? $price;
 
-        $context = [
+        $existingContext = (array) ($position->exit_context ?? []);
+        $context = array_merge($existingContext, [
             'exit' => $exit->toArray(),
             'price' => round($filledAt, 8),
-        ];
+        ]);
 
         if ($exit->type === ExitType::Target1 && $exit->closePercent < 100) {
             // Partial: bank 50%, trail stop to break-even, stay open.
@@ -548,6 +550,52 @@ final class PositionManager
         $last = end($candles);
 
         return $last ? $last->openTime : null;
+    }
+
+    /**
+     * Checks that the live R:R at the current market price has not degraded
+     * below the minimum threshold (e.g. when entering slightly after the 1h close).
+     */
+    private function hasSufficientLiveRiskReward(EntrySignal $signal, float $currentPrice): bool
+    {
+        if ($signal->type !== SignalType::LevelRetest || $currentPrice <= 0.0) {
+            return true;
+        }
+
+        $agentConfig = (array) ($this->config['agent'] ?? []);
+        $minLiveRr = (float) ($agentConfig['level_retest_min_live_rr'] ?? $this->config['level_retest_min_live_rr'] ?? 1.5);
+        if ($minLiveRr <= 0.0) {
+            return true;
+        }
+
+        $isLong = $signal->direction === Direction::Long;
+        $liveRisk = $isLong
+            ? ($currentPrice - $signal->stop)
+            : ($signal->stop - $currentPrice);
+        $liveReward = $isLong
+            ? ($signal->target1 - $currentPrice)
+            : ($currentPrice - $signal->target1);
+
+        if ($liveRisk <= 0.0 || $liveReward <= 0.0) {
+            return false;
+        }
+
+        $liveRr = $liveReward / $liveRisk;
+        if ($liveRr + 1e-9 < $minLiveRr) {
+            Log::info(sprintf(
+                '[entry_skipped] Live R:R degraded to %.2f (min %.2f) at price %.6f (signal entry %.6f, stop %.6f, target %.6f)',
+                $liveRr,
+                $minLiveRr,
+                $currentPrice,
+                $signal->entryPrice,
+                $signal->stop,
+                $signal->target1
+            ));
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

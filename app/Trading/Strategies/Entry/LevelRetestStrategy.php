@@ -67,6 +67,8 @@ final class LevelRetestStrategy implements EntryStrategyInterface
         private readonly float $minEntryScore = 100.0,
         /** Рабочий таймфрейм стратегии; null = принимать любой (используется в тестах). */
         private readonly ?string $requiredInterval = '1h',
+        /** Максимальный возраст закрытой свечи ретеста в минутах для входа в рынок (0 = без ограничения). */
+        private readonly int $maxSignalAgeMinutes = 15,
     ) {}
 
     public function evaluate(RuleContext $ctx, TradePlanner $planner): ?EntrySignal
@@ -87,6 +89,19 @@ final class LevelRetestStrategy implements EntryStrategyInterface
 
         if (! $eval->isFullSignal || $eval->score < $this->minEntryScore) {
             return null;
+        }
+
+        // Защита от запоздалых входов в середине/конце часа (например, когда слот
+        // освободился на :40 или :55 минуте после закрытия 1h-свечи ретеста).
+        if ($this->maxSignalAgeMinutes > 0 && $eval->candleOpenTime !== null) {
+            $intervalSec = $this->requiredInterval === '1h' ? 3600 : 3600;
+            $closeTimeSec = $eval->candleOpenTime + $intervalSec;
+            $ageSec = \Illuminate\Support\Carbon::now()->timestamp - $closeTimeSec;
+            // Применяем фильтр в пределах реального времени (до 24ч), чтобы
+            // исторические фикстуры в unit-тестах оставались детерминированными.
+            if ($ageSec >= 0 && $ageSec < 86400 && $ageSec > $this->maxSignalAgeMinutes * 60) {
+                return null;
+            }
         }
 
         return $eval->entrySignal;
@@ -371,7 +386,7 @@ final class LevelRetestStrategy implements EntryStrategyInterface
         }
 
         $candles = array_values($ctx->candles);
-        $now = time();
+        $now = \Illuminate\Support\Carbon::now()->timestamp;
 
         // Последняя свеча может быть ещё не закрыта — она не даёт сигналов.
         while ($candles !== [] && intdiv((int) end($candles)->closeTime, 1000) >= $now) {

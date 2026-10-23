@@ -236,8 +236,23 @@ class BingXPositionSyncService
                     continue;
                 }
 
-                // Position was closed on BingX!
+                // Resolve close data from BingX order/income history
                 $closeData = $this->resolveClosedPositionData($lPos, $lookbackDays);
+
+                // Guard against transient empty /user/positions responses from BingX:
+                // If the position has an exchange order/position ID, require confirmed
+                // close evidence (exit price, realized PnL, or closing order ID) before
+                // marking it closed in the local database.
+                $hasExchangeRef = ! empty($lPos->entry_order_id) || ! empty($lPos->external_id);
+                $hasCloseEvidence = $closeData['exit_price'] !== null
+                    || $closeData['realized_pnl'] !== null
+                    || ! empty($closeData['exit_order_id']);
+
+                if ($hasExchangeRef && ! $hasCloseEvidence) {
+                    Log::warning("BingXPositionSyncService: skipping unconfirmed close for {$lPos->symbol} {$lPos->direction} #{$lPos->id} (no closing order or realized PnL found)");
+                    $result->messages[] = "Skipped unconfirmed close for {$lPos->symbol} {$lPos->direction} #{$lPos->id} (no close evidence on exchange)";
+                    continue;
+                }
 
                 if (! $dryRun) {
                     $lPos->update([
@@ -252,6 +267,15 @@ class BingXPositionSyncService
                         'closed_at' => $closeData['closed_at'],
                         'synced_at' => now(),
                     ]);
+
+                    // Cancel any leftover bracket orders for this confirmed closed position
+                    foreach ($openOrders as $order) {
+                        $oId = (string) ($order['orderId'] ?? '');
+                        $oPosSide = strtoupper((string) ($order['positionSide'] ?? ''));
+                        if ($oId !== '' && ($oPosSide === '' || $oPosSide === $lPos->direction)) {
+                            $this->cancelOrder($lPos->symbol, $oId);
+                        }
+                    }
                 }
 
                 $result->closed++;
@@ -272,6 +296,7 @@ class BingXPositionSyncService
             ->where('status', Position::STATUS_CLOSED)
             ->where(function ($q) {
                 $q->whereNull('synced_at')
+                    ->orWhereColumn('synced_at', '<', 'closed_at')
                     ->orWhere('commission', 0.0)
                     ->orWhereNull('exit_reason')
                     ->orWhere('exit_reason', 'exchange_closed');
@@ -614,7 +639,7 @@ class BingXPositionSyncService
         $realizedPnlFromOrders = null;
         $endTime = $pos->closed_at
             ? (int) $pos->closed_at->copy()->addMinutes(15)->getTimestampMs()
-            : ($pos->opened_at ? (int) $pos->opened_at->copy()->addHours(6)->getTimestampMs() : null);
+            : ($pos->opened_at ? (int) $pos->opened_at->copy()->addHours(24)->getTimestampMs() : null);
 
         foreach ($orders as $order) {
             $status = (string) ($order['status'] ?? '');
@@ -658,6 +683,13 @@ class BingXPositionSyncService
                         $matchedPositionId = $orderPosId;
                     }
                 }
+            }
+        }
+
+        if ($pos->closed_at === null && $closingOrder !== null) {
+            $closingOrderTime = (int) ($closingOrder['updateTime'] ?? $closingOrder['time'] ?? 0);
+            if ($closingOrderTime > 0) {
+                $endTime = $closingOrderTime + (15 * 60 * 1000);
             }
         }
 
@@ -917,9 +949,16 @@ class BingXPositionSyncService
                 || ($posSide === 'SHORT' && $side === 'BUY')
                 || ! empty($order['reduceOnly']);
 
-            // 2. Orphaned TP/SL bracket orders: position is ALREADY closed on BingX, but bracket was left behind
+            // 2. Orphaned TP/SL bracket orders: position is ALREADY closed on BingX, but bracket was left behind.
+            // Do not cancel if there is still a local OPEN position in DB (Step 4 will verify closure first).
             if ($isClosingBracket) {
-                if (! $hasActivePosition) {
+                $hasLocalOpenPosition = Position::query()
+                    ->open()
+                    ->where('symbol', $sym)
+                    ->when($posSide !== '', fn ($q) => $q->where('direction', $posSide))
+                    ->exists();
+
+                if (! $hasActivePosition && ! $hasLocalOpenPosition) {
                     if (! $dryRun) {
                         $this->cancelOrder($sym, $orderId);
                     }
