@@ -102,19 +102,139 @@ final class BingXTradeExecutorTest extends TestCase
             ],
         );
 
-        $res = $executor->moveStop('SOL-USDT', Direction::Long, 120.208765);
+        $res = $executor->moveStop('SOL-USDT', Direction::Long, 120.208765, 15.6789);
         $this->assertTrue($res->ok);
 
         Http::assertSent(function (Request $request) {
-            if (! str_contains($request->url(), '/openApi/swap/v2/trade/order')) {
+            if (! str_contains($request->url(), '/openApi/swap/v2/trade/order') || $request->method() !== 'POST') {
                 return false;
             }
 
             $data = $request->data();
-            // SOL has 3 decimals
+            // SOL has 3 decimals for price and 2 decimals for quantity
             $this->assertSame(120.209, (float) $data['stopPrice']);
+            $this->assertSame(15.68, (float) $data['quantity']);
 
             return true;
+        });
+    }
+
+    public function test_move_stop_queries_held_position_quantity_when_not_provided(): void
+    {
+        Http::fake([
+            'https://open-api.bingx.com/openApi/swap/v2/user/positions*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    ['positionSide' => 'LONG', 'positionAmt' => '25.5432'],
+                ],
+            ]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/openOrders*' => Http::response(['code' => 0, 'data' => []]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 0,
+                'data' => ['order' => ['orderId' => 987654321]],
+            ]),
+        ]);
+
+        $executor = new BingXTradeExecutor(
+            http: $this->app->make(\Illuminate\Http\Client\Factory::class),
+            config: [
+                'api_key' => 'fake-key',
+                'api_secret' => 'fake-secret',
+                'base_url' => 'https://open-api.bingx.com',
+            ],
+        );
+
+        $res = $executor->moveStop('SOL-USDT', Direction::Long, 120.208765);
+        $this->assertTrue($res->ok);
+
+        Http::assertSent(function (Request $request) {
+            if (! str_contains($request->url(), '/openApi/swap/v2/trade/order') || $request->method() !== 'POST') {
+                return false;
+            }
+
+            $data = $request->data();
+            $this->assertSame(25.54, (float) $data['quantity']);
+
+            return true;
+        });
+    }
+
+    public function test_move_stop_cancels_old_stop_orders_on_success(): void
+    {
+        Http::fake([
+            'https://open-api.bingx.com/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 111222333,
+                            'positionSide' => 'LONG',
+                            'type' => 'STOP_MARKET',
+                        ],
+                    ],
+                ],
+            ]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 0,
+                'data' => ['order' => ['orderId' => 987654321]],
+            ]),
+        ]);
+
+        $executor = new BingXTradeExecutor(
+            http: $this->app->make(\Illuminate\Http\Client\Factory::class),
+            config: [
+                'api_key' => 'fake-key',
+                'api_secret' => 'fake-secret',
+                'base_url' => 'https://open-api.bingx.com',
+            ],
+        );
+
+        $res = $executor->moveStop('SOL-USDT', Direction::Long, 120.208765, 10.0);
+        $this->assertTrue($res->ok);
+
+        Http::assertSent(function (Request $request) {
+            return $request->method() === 'DELETE'
+                && str_contains($request->url(), '/openApi/swap/v2/trade/order')
+                && str_contains($request->url(), 'orderId=111222333');
+        });
+    }
+
+    public function test_move_stop_preserves_old_stop_orders_if_new_stop_placement_fails(): void
+    {
+        Http::fake([
+            'https://open-api.bingx.com/openApi/swap/v2/trade/openOrders*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'orders' => [
+                        [
+                            'orderId' => 111222333,
+                            'positionSide' => 'LONG',
+                            'type' => 'STOP_MARKET',
+                        ],
+                    ],
+                ],
+            ]),
+            'https://open-api.bingx.com/openApi/swap/v2/trade/order*' => Http::response([
+                'code' => 100001,
+                'msg' => 'insufficient margin',
+            ], 400),
+        ]);
+
+        $executor = new BingXTradeExecutor(
+            http: $this->app->make(\Illuminate\Http\Client\Factory::class),
+            config: [
+                'api_key' => 'fake-key',
+                'api_secret' => 'fake-secret',
+                'base_url' => 'https://open-api.bingx.com',
+            ],
+        );
+
+        $res = $executor->moveStop('SOL-USDT', Direction::Long, 120.208765, 10.0);
+        $this->assertFalse($res->ok);
+
+        // Crucial: Old stop must NOT be deleted if new stop placement fails
+        Http::assertNotSent(function (Request $request) {
+            return $request->method() === 'DELETE';
         });
     }
 

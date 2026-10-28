@@ -31,8 +31,14 @@ final class StopLossStrategy implements ExitStrategyInterface
         $price = $ctx->price();
         // Флаг: позиция является лонговой
         $isLong = $position->direction === Direction::Long;
-        // Если уже был взят Target 1, используем цену входа как безубыточный стоп, иначе исходный стоп
-        $stop = $position->breakevenSet ? $position->entryPrice : $position->stopPrice;
+        // Если стоп был перенесен (безубыток / лок прибыли / трейлинг),
+        // используем защитный уровень не хуже точки входа
+        $stop = $position->stopPrice;
+        if ($position->breakevenSet) {
+            $stop = $isLong
+                ? max($stop, $position->entryPrice)
+                : ($stop > 0.0 ? min($stop, $position->entryPrice) : $position->entryPrice);
+        }
 
         if ($stop <= 0.0) {
             return null;

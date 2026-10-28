@@ -141,7 +141,7 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             // immediately place a dedicated STOP_MARKET order so the position is never left naked.
             if (! $this->hasOpenStopOrder($symbol, $positionSide)) {
                 Log::warning("[trade_executor] Bracket stop not detected on BingX for {$symbol} {$positionSide}. Placing dedicated STOP_MARKET order at {$stopPrice}.");
-                $this->moveStop($symbol, $signal->direction, $stopPrice);
+                $this->moveStop($symbol, $signal->direction, $stopPrice, $orderQuantity);
             }
         }
 
@@ -181,24 +181,44 @@ final class BingXTradeExecutor implements TradeExecutorInterface
         ]);
     }
 
-    public function moveStop(string $symbol, Direction $direction, float $newStop): OrderResult
+    public function moveStop(string $symbol, Direction $direction, float $newStop, ?float $quantity = null): OrderResult
     {
         $positionSide = $direction === Direction::Long ? 'LONG' : 'SHORT';
         $side = $direction === Direction::Long ? 'SELL' : 'BUY';
 
-        // Cancel any existing stop orders so the position ends up with exactly
-        // one stop at the new level rather than accumulating duplicates.
-        $this->cancelStopOrders($symbol, $positionSide);
+        $qty = ($quantity !== null && $quantity > 0.0) ? $quantity : $this->queryPositionQty($symbol, $positionSide);
+        if ($qty <= 0.0) {
+            Log::warning("[trade_executor] Cannot relocate stop for {$symbol} {$positionSide}: no open position quantity found.");
 
+            return OrderResult::failure("Cannot relocate stop for {$symbol} {$positionSide}: no open position quantity found.");
+        }
+
+        $orderQuantity = ContractPrecision::roundQuantity($qty, $symbol);
         $roundedStop = ContractPrecision::roundPrice($newStop, $symbol);
 
-        return $this->send('/openApi/swap/v2/trade/order', [
+        // Find existing stop order IDs before placing the new one, so if placement
+        // fails the trade is never left unprotected.
+        $oldStopOrderIds = $this->getOpenStopOrderIds($symbol, $positionSide);
+
+        $result = $this->send('/openApi/swap/v2/trade/order', [
             'symbol' => $symbol,
             'side' => $side,
             'positionSide' => $positionSide,
             'type' => 'STOP_MARKET',
             'stopPrice' => $roundedStop,
+            'quantity' => $orderQuantity,
         ]);
+
+        if ($result->ok) {
+            // Cancel older stop orders now that the new one is confirmed on the exchange
+            foreach ($oldStopOrderIds as $oldOrderId) {
+                $this->cancelOrder($symbol, $oldOrderId);
+            }
+        } else {
+            Log::error("[trade_executor] Failed to relocate stop for {$symbol} {$positionSide} to {$roundedStop}: {$result->error}");
+        }
+
+        return $result;
     }
 
     public function balance(): float
@@ -313,20 +333,32 @@ final class BingXTradeExecutor implements TradeExecutorInterface
     }
 
     /**
-     * Whether an open protective stop order (STOP_MARKET or STOP) exists on `symbol` for `positionSide`.
+     * Get IDs of all open protective stop orders on `symbol` for `positionSide`.
+     *
+     * @return list<string>
      */
-    public function hasOpenStopOrder(string $symbol, string $positionSide): bool
+    private function getOpenStopOrderIds(string $symbol, string $positionSide): array
     {
+        $ids = [];
         foreach ($this->fetchOpenOrders($symbol) as $order) {
             if (
                 ($order['positionSide'] ?? '') === $positionSide
                 && in_array($order['type'] ?? '', ['STOP_MARKET', 'STOP'], true)
+                && isset($order['orderId'])
             ) {
-                return true;
+                $ids[] = (string) $order['orderId'];
             }
         }
 
-        return false;
+        return $ids;
+    }
+
+    /**
+     * Whether an open protective stop order (STOP_MARKET or STOP) exists on `symbol` for `positionSide`.
+     */
+    public function hasOpenStopOrder(string $symbol, string $positionSide): bool
+    {
+        return ! empty($this->getOpenStopOrderIds($symbol, $positionSide));
     }
 
     /**
@@ -336,13 +368,8 @@ final class BingXTradeExecutor implements TradeExecutorInterface
      */
     private function cancelStopOrders(string $symbol, string $positionSide): void
     {
-        foreach ($this->fetchOpenOrders($symbol) as $order) {
-            if (
-                ($order['positionSide'] ?? '') === $positionSide
-                && in_array($order['type'] ?? '', ['STOP_MARKET', 'STOP'], true)
-            ) {
-                $this->cancelOrder($symbol, (string) $order['orderId']);
-            }
+        foreach ($this->getOpenStopOrderIds($symbol, $positionSide) as $orderId) {
+            $this->cancelOrder($symbol, $orderId);
         }
     }
 

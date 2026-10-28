@@ -46,9 +46,9 @@ final class PaperTradeExecutor implements TradeExecutorInterface
         return OrderResult::success('paper-'.uniqid('', true));
     }
 
-    public function moveStop(string $symbol, Direction $direction, float $newStop): OrderResult
+    public function moveStop(string $symbol, Direction $direction, float $newStop, ?float $quantity = null): OrderResult
     {
-        $this->log->info('[paper] move stop', compact('symbol', 'newStop') + ['direction' => $direction->value]);
+        $this->log->info('[paper] move stop', compact('symbol', 'newStop', 'quantity') + ['direction' => $direction->value]);
 
         return OrderResult::success();
     }

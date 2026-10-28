@@ -202,7 +202,10 @@ final class PositionManager
 
         if ($exit->type === ExitType::Target1 && $exit->closePercent < 100) {
             // Partial: bank 50%, trail stop to break-even, stay open.
-            $this->executor->moveStop($position->symbol, $position->direction(), $exit->moveStopTo ?? $position->entry_price);
+            $remainingQty = ($position->quantity && $position->quantity > 0.0)
+                ? $position->quantity * (1.0 - ($exit->closePercent / 100.0))
+                : null;
+            $this->executor->moveStop($position->symbol, $position->direction(), $exit->moveStopTo ?? $position->entry_price, $remainingQty);
             $position->update([
                 'size' => 0.5,
                 'stop_price' => $exit->moveStopTo ?? $position->entry_price,
@@ -763,7 +766,19 @@ final class PositionManager
         ));
 
         // Relocate stop on exchange
-        $this->executor->moveStop($position->symbol, $position->direction(), $newStop);
+        $qty = ($position->quantity && $position->quantity > 0.0)
+            ? $position->quantity * ($position->size ?? 1.0)
+            : null;
+        $moveResult = $this->executor->moveStop($position->symbol, $position->direction(), $newStop, $qty);
+        if (! $moveResult->ok) {
+            Log::warning(sprintf(
+                '[dynamic_protection] Exchange stop relocation rejected for %s %s to %.6f: %s',
+                $position->symbol,
+                $position->direction,
+                $newStop,
+                $moveResult->error
+            ));
+        }
 
         // Update stop in database
         $exitContext = (array) ($position->exit_context ?? []);

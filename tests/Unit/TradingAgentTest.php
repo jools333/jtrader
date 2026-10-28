@@ -255,6 +255,25 @@ class TradingAgentTest extends TestCase
         $this->assertSame(ExitType::StopLoss, $exit->type);
     }
 
+    public function test_relocated_stop_higher_than_entry_triggers_when_breakeven_set(): void
+    {
+        $candles = $this->baseline(55, 95, 100.5); // last close = 100.5 (above entry 100.0, but below relocated stop 101.0)
+        $position = new PositionState(
+            direction: Direction::Long,
+            entryPrice: 100.0,
+            stopPrice: 101.0,
+            target1: 105.0,
+            target2: 130.0,
+            size: 1.0,
+            breakevenSet: true,
+        );
+
+        $exit = $this->agent()->evaluate($candles, 100.0, 10.0, $position)->exitSignal;
+
+        $this->assertNotNull($exit);
+        $this->assertSame(ExitType::StopLoss, $exit->type);
+    }
+
     public function test_early_reversal_closes_long(): void
     {
         $atr = 8.0;
