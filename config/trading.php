@@ -39,7 +39,7 @@ return [
         'DOGE-USDT' => (float) env('TRADING_MAX_POSITION_PCT_DOGE', 2.5),
     ],
     // Hard cap: maximum number of concurrent open positions across all symbols (0 = disabled).
-    'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 2),
+    'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 1),
     // Maximum concurrent positions in the same direction across all symbols (0 = disabled).
     // Prevents correlated multi-asset basket liquidation when BTC suddenly reverses.
     'max_positions_per_direction' => (int) env('TRADING_MAX_POSITIONS_PER_DIRECTION', 1),
@@ -139,14 +139,15 @@ return [
         'level_retest_max_signal_age_minutes' => (int) env('TRADING_LEVEL_RETEST_MAX_SIGNAL_AGE_MINUTES', 15), // макс. возраст закрытой 1h-свечи ретеста (мин) для входа
         'level_retest_min_live_rr' => (float) env('TRADING_LEVEL_RETEST_MIN_LIVE_RR', 1.5), // мин. фактический R:R по текущей цене при открытии сделки
         // Динамическая защита для сетапов LevelRetest («пробой диапазона + ретест»):
-        // Работает по R-множителям (не по мелким % как в 5m скальпинге):
-        // При +1.0R стоп переносится в безубыток (+0.12% от входа для гарантии покрытия комиссий).
-        // При +1.4R стоп фиксирует гарантированную прибыль (+0.70R), защищая от разворота перед тейком 2R.
+        // Работает по R-множителям и дополнительно страхуется при уходе цены на >= +0.55% в плюс:
+        // При +0.70R (или >= +0.55% прибыли на широких стопах) стоп переносится в безубыток (+0.12% от входа для гарантии покрытия комиссий).
+        // При +1.30R стоп фиксирует гарантированную прибыль (+0.70R), защищая от разворота перед тейком 2R.
         'level_retest_be_enabled' => (bool) env('TRADING_LEVEL_RETEST_BE_ENABLED', true),
-        'level_retest_be_trigger_r' => (float) env('TRADING_LEVEL_RETEST_BE_TRIGGER_R', 1.0), // перенос в БУ при достижении 1.0R прибыли
+        'level_retest_be_trigger_r' => (float) env('TRADING_LEVEL_RETEST_BE_TRIGGER_R', 0.70), // перенос в БУ при достижении 0.70R прибыли
+        'level_retest_be_trigger_pct' => (float) env('TRADING_LEVEL_RETEST_BE_TRIGGER_PCT', 0.55), // или при достижении +0.55% хода цены (для широких часовых стопов)
         'level_retest_be_buffer_pct' => (float) env('TRADING_LEVEL_RETEST_BE_BUFFER_PCT', 0.12), // отступ за точку входа для покрытия комиссий (%)
         'level_retest_lock_profit_enabled' => (bool) env('TRADING_LEVEL_RETEST_LOCK_PROFIT_ENABLED', true),
-        'level_retest_lock_trigger_r' => (float) env('TRADING_LEVEL_RETEST_LOCK_TRIGGER_R', 1.4), // фиксация части прибыли при 1.4R
+        'level_retest_lock_trigger_r' => (float) env('TRADING_LEVEL_RETEST_LOCK_TRIGGER_R', 1.30), // фиксация части прибыли при 1.30R
         'level_retest_lock_stop_r' => (float) env('TRADING_LEVEL_RETEST_LOCK_STOP_R', 0.70), // уровень нового стопа при фиксации прибыли (+0.70R)
         'dynamic_protection_skip_signals' => [],
 

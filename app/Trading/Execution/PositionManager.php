@@ -76,7 +76,7 @@ final class PositionManager
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
             $this->attachChart($position, $candles);
         } elseif ($open !== null) {
-            $this->manageDynamicProtection($open, $this->currentPrice($candles));
+            $this->manageDynamicProtection($open, $this->favorablePriceSinceOpen($open, $candles));
         } elseif ($open === null
             && $result->entrySignal !== null
             && ! $isExcluded
@@ -547,6 +547,52 @@ final class PositionManager
         return $last ? $last->close : 0.0;
     }
 
+    /**
+     * Returns the most favorable price (highest high for LONG, lowest low for SHORT)
+     * reached since the position was opened, falling back to the current close price.
+     * Prevents missing intra-candle Break-Even / Lock-Profit peaks between 5-minute scans.
+     *
+     * @param  array<int, Candle>  $candles
+     */
+    private function favorablePriceSinceOpen(Position $position, array $candles): float
+    {
+        $current = $this->currentPrice($candles);
+        if ($current <= 0.0) {
+            return 0.0;
+        }
+
+        $entryOpenTime = isset($position->entry_context['entry_open_time'])
+            ? (int) $position->entry_context['entry_open_time']
+            : null;
+        $openedAtMs = $position->opened_at !== null
+            ? (int) ($position->opened_at->getTimestamp() * 1000)
+            : null;
+
+        $isLong = $position->direction() === Direction::Long;
+        $best = $current;
+
+        foreach ($candles as $candle) {
+            $isAfterOpen = false;
+            if ($entryOpenTime !== null && $candle->openTime >= $entryOpenTime) {
+                $isAfterOpen = true;
+            } elseif ($openedAtMs !== null && $candle->closeTime >= $openedAtMs) {
+                $isAfterOpen = true;
+            }
+
+            if (! $isAfterOpen) {
+                continue;
+            }
+
+            if ($isLong && $candle->high > $best) {
+                $best = $candle->high;
+            } elseif (! $isLong && $candle->low > 0.0 && $candle->low < $best) {
+                $best = $candle->low;
+            }
+        }
+
+        return $best;
+    }
+
     /** @param array<int, Candle> $candles */
     private function currentOpenTime(array $candles): ?int
     {
@@ -648,9 +694,9 @@ final class PositionManager
             $profitUnits = $isLong ? ($price - $entry) : ($entry - $price);
             $profitR = $profitUnits / $riskUnit;
 
-            // 1a. Lock Profit при достижении lock_trigger_r (по умолчанию 1.4R -> стоп подтягивается на +0.70R)
+            // 1a. Lock Profit при достижении lock_trigger_r (по умолчанию 1.30R -> стоп подтягивается на +0.70R)
             $lockEnabled = (bool) ($agentConfig['level_retest_lock_profit_enabled'] ?? $this->config['level_retest_lock_profit_enabled'] ?? true);
-            $lockTriggerR = (float) ($agentConfig['level_retest_lock_trigger_r'] ?? $this->config['level_retest_lock_trigger_r'] ?? 1.4);
+            $lockTriggerR = (float) ($agentConfig['level_retest_lock_trigger_r'] ?? $this->config['level_retest_lock_trigger_r'] ?? 1.30);
             $lockStopR = (float) ($agentConfig['level_retest_lock_stop_r'] ?? $this->config['level_retest_lock_stop_r'] ?? 0.70);
 
             if ($lockEnabled && $profitR >= $lockTriggerR) {
@@ -668,11 +714,15 @@ final class PositionManager
                 }
             }
 
-            // 1b. Smart Break-Even при достижении be_trigger_r (по умолчанию 1.0R -> стоп на entry +- buffer)
-            $beTriggerR = (float) ($agentConfig['level_retest_be_trigger_r'] ?? $this->config['level_retest_be_trigger_r'] ?? 1.0);
+            // 1b. Smart Break-Even при достижении be_trigger_r (по умолчанию 0.70R) ИЛИ be_trigger_pct (+0.55% хода цены для широких стопов) -> стоп на entry +- buffer
+            $beTriggerR = (float) ($agentConfig['level_retest_be_trigger_r'] ?? $this->config['level_retest_be_trigger_r'] ?? 0.70);
+            $beTriggerPct = (float) ($agentConfig['level_retest_be_trigger_pct'] ?? $this->config['level_retest_be_trigger_pct'] ?? 0.55);
             $beBufferPct = (float) ($agentConfig['level_retest_be_buffer_pct'] ?? $this->config['level_retest_be_buffer_pct'] ?? 0.12) / 100.0;
 
-            if ($newStop === null && $profitR >= $beTriggerR) {
+            $reachedBeR = $beTriggerR > 0.0 && $profitR >= $beTriggerR;
+            $reachedBePct = $beTriggerPct > 0.0 && $profitPct >= $beTriggerPct;
+
+            if ($newStop === null && ($reachedBeR || $reachedBePct)) {
                 $candidateBeStop = $isLong
                     ? $entry * (1.0 + $beBufferPct)
                     : $entry * (1.0 - $beBufferPct);

@@ -516,6 +516,7 @@ class PositionManagerTest extends TestCase
                 'agent' => [
                     'level_retest_be_enabled' => true,
                     'level_retest_be_trigger_r' => 1.0,
+                    'level_retest_be_trigger_pct' => 2.5,
                     'level_retest_be_buffer_pct' => 0.12,
                     'level_retest_lock_profit_enabled' => true,
                     'level_retest_lock_trigger_r' => 1.4,
@@ -538,6 +539,95 @@ class PositionManagerTest extends TestCase
         $this->assertEqualsWithDelta(100.12, $pos->stop_price, 0.01);
         $this->assertTrue((bool) ($pos->exit_context['protection']['breakeven_set'] ?? false));
         $this->assertSame('break_even', $pos->exit_context['protection']['reason']);
+
+        // 3. LEVEL_RETEST protection also triggers on percentage threshold (e.g. >= 0.55% move on wide 1h stops)
+        $widePos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'LONG',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 2285.83,
+            'stop_price' => 2257.16, // 1.25% stop
+            'target1' => 2351.73,
+            'target2' => 2351.73,
+            'quantity' => 1.37,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(30),
+        ]);
+
+        $managerWide = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: (array) config('trading'),
+        );
+
+        // At 2299.34 (+0.59% move, which is ~0.47R < 0.70R), percentage trigger (0.55%) moves stop to BE
+        $wideStop = $managerWide->manageDynamicProtection($widePos, 2299.34);
+        $this->assertNotNull($wideStop);
+        $widePos->refresh();
+        $this->assertEqualsWithDelta(2285.83 * 1.0012, $widePos->stop_price, 0.05);
+        $this->assertSame('break_even', $widePos->exit_context['protection']['reason']);
+    }
+
+    public function test_process_uses_intra_candle_favorable_extremes_for_dynamic_protection(): void
+    {
+        $pos = Position::create([
+            'symbol' => 'BNB-USDT',
+            'interval' => '1h',
+            'direction' => 'SHORT',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 704.83,
+            'stop_price' => 708.64,
+            'target1' => 695.69,
+            'target2' => 695.69,
+            'quantity' => 4.37,
+            'size' => 1.0,
+            'entry_context' => [
+                'entry_open_time' => 1_700_000_000_000,
+                'signal' => ['stop' => 708.64],
+            ],
+            'opened_at' => \Carbon\Carbon::createFromTimestampMs(1_700_000_000_000),
+        ]);
+
+        $noExitAgent = new class implements \App\Trading\Contracts\TradingAgentInterface {
+            public function evaluate(
+                array $candles,
+                float $level,
+                ?float $atr = null,
+                ?\App\Trading\DTO\PositionState $position = null,
+                array $recentSignalTypes = [],
+                ?string $symbol = null,
+                ?string $interval = null,
+                ?array $btcCandles = null,
+                ?array $btcHtfCandles = null,
+            ): \App\Trading\DTO\AgentResult {
+                return new \App\Trading\DTO\AgentResult(
+                    entrySignal: null,
+                    exitSignal: null,
+                    indicators: new \App\Trading\DTO\IndicatorSnapshot(704.0, 705.0, 706.0, -0.5, -0.3, -0.2, 3.0),
+                );
+            }
+        };
+
+        $manager = new PositionManager(
+            agent: $noExitAgent,
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: (array) config('trading'),
+        );
+
+        // Candle spiked down to low=700.50 (+1.14R) intra-hour, then bounced back to close=703.50 (+0.35R).
+        // Even though close=703.50 is below BE threshold, intra-candle low=700.50 must trigger Break-Even!
+        $candles = [
+            new Candle(1_700_000_000_000, 704.32, 706.06, 700.50, 703.50, 100.0, 1_700_003_599_999),
+        ];
+
+        $manager->process('BNB-USDT', '1h', $candles, 706.59, 3.24);
+
+        $pos->refresh();
+        $this->assertEqualsWithDelta(704.83 * (1.0 - 0.0012), $pos->stop_price, 0.02);
+        $this->assertSame('break_even', $pos->exit_context['protection']['reason'] ?? null);
     }
 
     public function test_level_retest_lock_profit_at_1_4r(): void
@@ -614,6 +704,7 @@ class PositionManagerTest extends TestCase
                 'agent' => [
                     'level_retest_be_enabled' => true,
                     'level_retest_be_trigger_r' => 1.0,
+                    'level_retest_be_trigger_pct' => 2.5,
                     'level_retest_be_buffer_pct' => 0.12,
                     'level_retest_lock_profit_enabled' => true,
                     'level_retest_lock_trigger_r' => 1.4,
