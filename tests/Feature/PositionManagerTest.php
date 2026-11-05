@@ -559,7 +559,9 @@ class PositionManagerTest extends TestCase
         $managerWide = new PositionManager(
             agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
-            config: (array) config('trading'),
+            config: array_merge((array) config('trading'), [
+                'agent' => array_merge((array) config('trading.agent'), ['level_retest_be_enabled' => true]),
+            ]),
         );
 
         // At 2299.34 (+0.59% move, which is ~0.47R < 0.70R), percentage trigger (0.55%) moves stop to BE
@@ -614,7 +616,9 @@ class PositionManagerTest extends TestCase
         $manager = new PositionManager(
             agent: $noExitAgent,
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
-            config: (array) config('trading'),
+            config: array_merge((array) config('trading'), [
+                'agent' => array_merge((array) config('trading.agent'), ['level_retest_be_enabled' => true]),
+            ]),
         );
 
         // 1. Setup candle (1_700_000_000_000, closed BEFORE position opened at 1_700_003_610_000) had low=700.00.
@@ -994,7 +998,9 @@ class PositionManagerTest extends TestCase
         $manager = new PositionManager(
             agent: $this->agent(),
             executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
-            config: (array) config('trading'),
+            config: array_merge((array) config('trading'), [
+                'agent' => array_merge((array) config('trading.agent'), ['level_retest_be_enabled' => true]),
+            ]),
         );
 
         // 1. Trigger Smart Break-Even (+1.0R)
@@ -1070,5 +1076,34 @@ class PositionManagerTest extends TestCase
         $freshCandles = [new \App\Market\DTO\Candle(1_700_000_000_000, 100.0, 100.2, 99.9, 100.1, 100.0, 1_700_003_599_999)];
         $manager->process('ETH-USDT', '1h', $freshCandles, 100.0, 1.0);
         $this->assertDatabaseCount('positions', 1);
+    }
+
+    public function test_level_retest_protection_is_disabled_by_default(): void
+    {
+        $pos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'LONG',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 98.0,
+            'target1' => 104.0,
+            'target2' => 104.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(30),
+        ]);
+
+        $manager = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: (array) config('trading'),
+        );
+
+        // +1.5R would trigger BE/lock if enabled; by default the setup is held to 2R.
+        $this->assertNull($manager->manageDynamicProtection($pos, 103.0, 103.0));
+        $pos->refresh();
+        $this->assertEquals(98.0, $pos->stop_price);
     }
 }

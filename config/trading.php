@@ -142,7 +142,7 @@ return [
         // Работает по R-множителям и дополнительно страхуется при уходе цены на >= +0.55% в плюс:
         // При +0.70R (или >= +0.55% прибыли на широких стопах) стоп переносится в безубыток (+0.12% от входа для гарантии покрытия комиссий).
         // При +1.30R стоп фиксирует гарантированную прибыль (+0.70R), защищая от разворота перед тейком 2R.
-        'level_retest_be_enabled' => (bool) env('TRADING_LEVEL_RETEST_BE_ENABLED', true),
+        'level_retest_be_enabled' => (bool) env('TRADING_LEVEL_RETEST_BE_ENABLED', false), // ОТКЛЮЧЕНО: бэктест 84 дня (05.11.2026) — БУ/lock режут тейки 2R и дают худший результат (PF 0.82 против 1.14 у чистых 2R)
         'level_retest_be_trigger_r' => (float) env('TRADING_LEVEL_RETEST_BE_TRIGGER_R', 0.70), // перенос в БУ при достижении 0.70R прибыли
         'level_retest_be_trigger_pct' => (float) env('TRADING_LEVEL_RETEST_BE_TRIGGER_PCT', 0.55), // или при достижении +0.55% хода цены (для широких часовых стопов)
         'level_retest_be_buffer_pct' => (float) env('TRADING_LEVEL_RETEST_BE_BUFFER_PCT', 0.12), // отступ за точку входа для покрытия комиссий (%)
