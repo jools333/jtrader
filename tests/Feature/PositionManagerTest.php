@@ -588,7 +588,7 @@ class PositionManagerTest extends TestCase
                 'entry_open_time' => 1_700_000_000_000,
                 'signal' => ['stop' => 708.64],
             ],
-            'opened_at' => \Carbon\Carbon::createFromTimestampMs(1_700_000_000_000),
+            'opened_at' => \Carbon\Carbon::createFromTimestampMs(1_700_003_610_000),
         ]);
 
         $noExitAgent = new class implements \App\Trading\Contracts\TradingAgentInterface {
@@ -617,10 +617,22 @@ class PositionManagerTest extends TestCase
             config: (array) config('trading'),
         );
 
-        // Candle spiked down to low=700.50 (+1.14R) intra-hour, then bounced back to close=703.50 (+0.35R).
-        // Even though close=703.50 is below BE threshold, intra-candle low=700.50 must trigger Break-Even!
+        // 1. Setup candle (1_700_000_000_000, closed BEFORE position opened at 1_700_003_610_000) had low=700.00.
+        // Live candle (1_700_003_600_000) is still at close=704.50, low=704.10.
+        // Pre-entry setup candle's low MUST be ignored!
+        $preEntryCandles = [
+            new Candle(1_700_000_000_000, 704.32, 706.06, 700.00, 704.32, 100.0, 1_700_003_599_999),
+            new Candle(1_700_003_600_000, 704.32, 705.00, 704.10, 704.50, 100.0, 1_700_007_199_999),
+        ];
+        $manager->process('BNB-USDT', '1h', $preEntryCandles, 706.59, 3.24);
+        $pos->refresh();
+        $this->assertEqualsWithDelta(708.64, $pos->stop_price, 0.01);
+
+        // 2. Now live candle (1_700_003_600_000) spikes down to low=700.50 (+1.14R) and retraces to close=703.50 (< 703.98 BE stop).
+        // Intra-candle low=700.50 triggers Break-Even!
         $candles = [
-            new Candle(1_700_000_000_000, 704.32, 706.06, 700.50, 703.50, 100.0, 1_700_003_599_999),
+            new Candle(1_700_000_000_000, 704.32, 706.06, 704.00, 704.32, 100.0, 1_700_003_599_999),
+            new Candle(1_700_003_600_000, 704.32, 706.06, 700.50, 703.50, 100.0, 1_700_007_199_999),
         ];
 
         $manager->process('BNB-USDT', '1h', $candles, 706.59, 3.24);
@@ -628,6 +640,27 @@ class PositionManagerTest extends TestCase
         $pos->refresh();
         $this->assertEqualsWithDelta(704.83 * (1.0 - 0.0012), $pos->stop_price, 0.02);
         $this->assertSame('break_even', $pos->exit_context['protection']['reason'] ?? null);
+
+        // 3. If live price already crossed the candidate stop (e.g. LONG entry=100, peak=102, but livePrice=99.5 < BE 100.12),
+        // relocation is skipped so DB stop_price is never set past current market price.
+        $longPos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '1h',
+            'direction' => 'LONG',
+            'signal_type' => 'LEVEL_RETEST',
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 98.0,
+            'target1' => 104.0,
+            'target2' => 104.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'opened_at' => now()->subMinutes(30),
+        ]);
+        $skipped = $manager->manageDynamicProtection($longPos, 102.0, 99.5);
+        $this->assertNull($skipped);
+        $longPos->refresh();
+        $this->assertEquals(98.0, $longPos->stop_price);
     }
 
     public function test_level_retest_lock_profit_at_1_4r(): void

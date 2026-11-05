@@ -76,7 +76,8 @@ final class PositionManager
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
             $this->attachChart($position, $candles);
         } elseif ($open !== null) {
-            $this->manageDynamicProtection($open, $this->favorablePriceSinceOpen($open, $candles));
+            $livePrice = $this->currentPrice($candles);
+            $this->manageDynamicProtection($open, $this->favorablePriceSinceOpen($open, $candles), $livePrice);
         } elseif ($open === null
             && $result->entrySignal !== null
             && ! $isExcluded
@@ -568,18 +569,25 @@ final class PositionManager
             ? (int) ($position->opened_at->getTimestamp() * 1000)
             : null;
 
+        // If the position was opened after the setup candle closed (e.g. LevelRetest opens
+        // at 14:00:10 on the signal from the 13:00-14:00 candle), we must NOT include the
+        // setup candle's pre-entry high/low. Only inspect candles that started at or after
+        // the hour in which the trade was actually opened.
+        $minOpenTime = $entryOpenTime;
+        if ($openedAtMs !== null) {
+            $intervalSec = (int) (config("exchange.timeframes.{$position->interval}") ?? 3600);
+            $intervalMs = max(60_000, $intervalSec * 1000);
+            $openedBucketOpenTime = (int) (floor($openedAtMs / $intervalMs) * $intervalMs);
+            $minOpenTime = $minOpenTime !== null
+                ? max($minOpenTime, $openedBucketOpenTime)
+                : $openedBucketOpenTime;
+        }
+
         $isLong = $position->direction() === Direction::Long;
         $best = $current;
 
         foreach ($candles as $candle) {
-            $isAfterOpen = false;
-            if ($entryOpenTime !== null && $candle->openTime >= $entryOpenTime) {
-                $isAfterOpen = true;
-            } elseif ($openedAtMs !== null && $candle->closeTime >= $openedAtMs) {
-                $isAfterOpen = true;
-            }
-
-            if (! $isAfterOpen) {
+            if ($minOpenTime === null || $candle->openTime < $minOpenTime) {
                 continue;
             }
 
@@ -649,12 +657,17 @@ final class PositionManager
 
     /**
      * Manages Break-Even and Trailing Stop protection for an active open position.
+     *
+     * @param  float  $price  Favorable price reached since open (or current price)
+     * @param  float|null  $currentMarketPrice  Live market price used to validate that the relocated stop does not cross the spread
      */
-    public function manageDynamicProtection(Position $position, float $price): ?float
+    public function manageDynamicProtection(Position $position, float $price, ?float $currentMarketPrice = null): ?float
     {
         if ($price <= 0.0 || $position->entry_price <= 0.0) {
             return null;
         }
+
+        $livePrice = ($currentMarketPrice !== null && $currentMarketPrice > 0.0) ? $currentMarketPrice : $price;
 
         $agentConfig = (array) ($this->config['agent'] ?? []);
         $isLong = $position->direction() === Direction::Long;
@@ -804,6 +817,21 @@ final class PositionManager
         // Round stop price to appropriate decimals
         $newStop = ContractPrecision::roundPrice($newStop, $position->symbol);
 
+        // 4. Validate against live market price: BingX rejects STOP_MARKET if stopPrice >= currentPrice for LONG
+        // (or stopPrice <= currentPrice for SHORT). If price already retraced past the candidate stop, skip relocation.
+        if (($isLong && $newStop >= $livePrice) || (! $isLong && $newStop <= $livePrice)) {
+            Log::info(sprintf(
+                '[dynamic_protection] Skipping stop relocation for %s %s to %.6f (%s): live price %.6f already crossed candidate stop',
+                $position->symbol,
+                $position->direction,
+                $newStop,
+                $reason,
+                $livePrice
+            ));
+
+            return null;
+        }
+
         Log::info(sprintf(
             '[dynamic_protection] Relocating stop for %s %s: %.6f -> %.6f (%s, profit: %.2f%%, price: %.6f)',
             $position->symbol,
@@ -828,6 +856,8 @@ final class PositionManager
                 $newStop,
                 $moveResult->error
             ));
+
+            return null;
         }
 
         // Update stop in database
