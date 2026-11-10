@@ -64,7 +64,7 @@ return [
     | Symbols monitored for market regime / intermarket signals but excluded
     | from opening trades.
     */
-    'excluded_symbols' => array_values(array_filter(array_map('trim', explode(',', (string) env('TRADING_EXCLUDED_SYMBOLS', 'BTC-USDT'))))),
+    'excluded_symbols' => array_values(array_filter(array_map('trim', explode(',', (string) env('TRADING_EXCLUDED_SYMBOLS', 'BTC-USDT,ADA-USDT,XRP-USDT'))))),
 
     /*
     |--------------------------------------------------------------------------
