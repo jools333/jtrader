@@ -45,9 +45,11 @@ final class EntryGuard
         // для неё отключены. Остаётся макро-режим BTC — защита от входа
         // против глобального тренда (см. блок 3).
         $isLevelRetest = $signalType === SignalType::LevelRetest;
+        $isSqueezeBreakout = $signalType === SignalType::SqueezeBreakout;
+        $isSwingStrategy = $isLevelRetest || $isSqueezeBreakout;
 
         // 2. Порог максимального удаления цены от уровня (только для стратегий от уровней)
-        if (! $isLevelRetest && $signalType !== SignalType::BtcLeadLag) {
+        if (! $isSwingStrategy && $signalType !== SignalType::BtcLeadLag) {
             $maxAtrTravel = (float) ($this->config['max_atr_travel'] ?? 0.70);
             // Если цена уже ушла дальше 70% ATR от уровня — вход блокируется
             if ($ctx->atrTravelFraction() > $maxAtrTravel) {
@@ -59,10 +61,10 @@ final class EntryGuard
         if ($direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcData()) {
             // Штормовой фильтр: блокируем входы при слишком высокой абсолютной
             // волатильности. Порог откалиброван под 5m скальпинг (0.8% за 15
-            // свечей) и на 1h срабатывает почти всегда, поэтому для
-            // LEVEL_RETEST он не применяется.
+            // свечей) и на 1h/4h срабатывает почти всегда, поэтому для
+            // LEVEL_RETEST и SQUEEZE_BREAKOUT он не применяется.
             $stormFilterEnabled = (bool) ($this->config['btc_storm_filter_enabled'] ?? true);
-            if ($stormFilterEnabled && ! $isLevelRetest) {
+            if ($stormFilterEnabled && ! $isSwingStrategy) {
                 $stormThreshold = (float) ($this->config['btc_storm_threshold_pct'] ?? 0.80);
                 $stormLookback = (int) ($this->config['btc_storm_lookback'] ?? 15);
                 $btcWidth = $ctx->btcRecentWidthPct($stormLookback);
@@ -74,9 +76,20 @@ final class EntryGuard
 
             $btcFilterEnabled = (bool) ($this->config['btc_filter_enabled'] ?? true);
 
-            // Для LEVEL_RETEST (1h) достаточно макро-режима BTC: направление
-            // против устойчивого тренда BTC запрещено.
-            if ($btcFilterEnabled && $isLevelRetest) {
+            // Для SQUEEZE_BREAKOUT (4h): строгий макро-фильтр BTC по EMA50 на 4h.
+            if ($btcFilterEnabled && $isSqueezeBreakout) {
+                $btcPrice = $ctx->btcLastPrice();
+                $btcEma50 = $ctx->btcEma50();
+
+                if ($btcPrice !== null && $btcEma50 !== null) {
+                    if ($direction === Direction::Long && $btcPrice < $btcEma50) {
+                        return false;
+                    }
+                    if ($direction === Direction::Short && $btcPrice > $btcEma50) {
+                        return false;
+                    }
+                }
+            } elseif ($btcFilterEnabled && $isLevelRetest) {
                 $btcPrice = $ctx->btcLastPrice();
                 $btcEma50 = $ctx->btcEma50();
                 $btcEma8 = $ctx->btcEma8();
@@ -144,7 +157,7 @@ final class EntryGuard
         }
 
         // 4. Старший межрыночный фильтр BTC (BTC Higher Timeframe Regime: 1h)
-        if (! $isLevelRetest && $direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcHtfData()) {
+        if (! $isSwingStrategy && $direction !== null && $ctx->symbol !== 'BTC-USDT' && $ctx->hasBtcHtfData()) {
             $btcHtfFilterEnabled = (bool) ($this->config['btc_htf_filter_enabled'] ?? false);
             if ($btcHtfFilterEnabled) {
                 $btcRet3 = $ctx->btcReturnPct(3) ?? 0.0;
@@ -159,9 +172,26 @@ final class EntryGuard
             }
         }
 
+        // 4b. Старший тренд самого актива на 4H (EMA50) для LEVEL_RETEST (1h):
+        // диагностика на 4.5 мес. показала, что сделки против 4H EMA50 дают PF 0.80 (-$464).
+        if ($isLevelRetest && $direction !== null && $ctx->hasSymbolHtfData()) {
+            $lrHtfEnabled = (bool) ($this->config['level_retest_htf_filter_enabled'] ?? true);
+            if ($lrHtfEnabled) {
+                $htfPrice = $ctx->symbolHtfLastPrice();
+                $htfEma50 = $ctx->symbolHtfEma50();
+                if ($htfPrice !== null && $htfEma50 !== null) {
+                    if ($direction === Direction::Long && $htfPrice < $htfEma50) {
+                        return false;
+                    }
+                    if ($direction === Direction::Short && $htfPrice > $htfEma50) {
+                        return false;
+                    }
+                }
+            }
+        }
 
-        // 5. Старший таймфрейм самого альткоина (Altcoin HTF Regime: 1h)
-        if (! $isLevelRetest && $direction !== null && $ctx->symbol !== 'BTC-USDT') {
+        // 5. Старший таймфрейм самого альткоина (Altcoin HTF Regime: 1h, legacy)
+        if (! $isSwingStrategy && $direction !== null && $ctx->symbol !== 'BTC-USDT') {
             $altHtfFilterEnabled = (bool) ($this->config['alt_htf_filter_enabled'] ?? false);
             if ($altHtfFilterEnabled) {
                 try {

@@ -26,6 +26,12 @@ return [
     |   Per-symbol minimum lot size is enforced by the exchange, not here.
     */
     'risk_percent'     => (float) env('TRADING_RISK_PCT', 1.0),
+    // Per-strategy risk overrides (% of balance per 1R trade).
+    // SQUEEZE_BREAKOUT (4h) uses 0.05% (~$45 on $90k) so 2 concurrent 4h trend trades
+    // stay within ~$3,000 total notional and ~$90 combined risk.
+    'strategy_risk_pct' => [
+        'SQUEEZE_BREAKOUT' => (float) env('TRADING_SQUEEZE_RISK_PCT', 0.05),
+    ],
     'symbol_risk_pct'  => [
         'ADA-USDT'  => (float) env('TRADING_RISK_PCT_ADA', 0.75),
         'DOGE-USDT' => (float) env('TRADING_RISK_PCT_DOGE', 0.75),
@@ -38,11 +44,21 @@ return [
     'symbol_max_position_pct' => [
         'DOGE-USDT' => (float) env('TRADING_MAX_POSITION_PCT_DOGE', 2.5),
     ],
-    // Hard cap: maximum number of concurrent open positions across all symbols (0 = disabled).
-    'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 1),
+    // Hard cap: maximum number of concurrent open positions across all strategies (0 = disabled).
+    'max_open_positions' => (int) env('TRADING_MAX_OPEN_POSITIONS', 3),
+    // Per-strategy concurrent open position caps (allows LEVEL_RETEST 1h and SQUEEZE_BREAKOUT 4h to run in parallel).
+    'strategy_max_open_positions' => [
+        'LEVEL_RETEST' => (int) env('TRADING_LEVEL_RETEST_MAX_OPEN', 1),
+        'SQUEEZE_BREAKOUT' => (int) env('TRADING_SQUEEZE_MAX_OPEN', 2),
+    ],
     // Maximum concurrent positions in the same direction across all symbols (0 = disabled).
     // Prevents correlated multi-asset basket liquidation when BTC suddenly reverses.
     'max_positions_per_direction' => (int) env('TRADING_MAX_POSITIONS_PER_DIRECTION', 1),
+    // Per-strategy directional cap overrides.
+    'strategy_max_positions_per_direction' => [
+        'LEVEL_RETEST' => (int) env('TRADING_LEVEL_RETEST_MAX_PER_DIR', 1),
+        'SQUEEZE_BREAKOUT' => (int) env('TRADING_SQUEEZE_MAX_PER_DIR', 2),
+    ],
     // Minimum interval in minutes between opening ANY positions across all symbols (0 = disabled).
     // Staggers entries to prevent opening multiple pairs on the exact same 1-minute candle.
     'min_entry_interval_minutes' => (int) env('TRADING_MIN_ENTRY_INTERVAL_MINUTES', 10),
@@ -132,12 +148,39 @@ return [
         'level_retest_retest_body_atr' => (float) env('TRADING_LEVEL_RETEST_BODY_ATR', 0.05), // мин. тело свечи ретеста
         'level_retest_fail_atr' => (float) env('TRADING_LEVEL_RETEST_FAIL_ATR', 0.35), // потеря структуры до ретеста
         'level_retest_stop_buffer_atr' => (float) env('TRADING_LEVEL_RETEST_STOP_BUFFER_ATR', 0.15), // буфер стопа за экстремум
-        'level_retest_min_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MIN_STOP_PCT', 0.40), // мин. стоп (% цены)
-        'level_retest_max_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MAX_STOP_PCT', 1.80), // макс. стоп (% цены)
+        'level_retest_min_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MIN_STOP_PCT', 1.00), // мин. стоп (% цены): отсекаем микро-шум < 1.0% (диагностика 19.11.2026)
+        'level_retest_max_stop_pct' => (float) env('TRADING_LEVEL_RETEST_MAX_STOP_PCT', 1.80), // макс. стоп (% цены) — шире не берём, риск неограничен
+        'level_retest_htf_filter_enabled' => (bool) env('TRADING_LEVEL_RETEST_HTF_FILTER_ENABLED', true), // фильтр тренда 4H EMA50 (диагностика 19.11.2026)
         'level_retest_target_r' => (float) env('TRADING_LEVEL_RETEST_TARGET_R', 2.0), // цель в R
         'level_retest_max_hold_hours' => (int) env('TRADING_LEVEL_RETEST_MAX_HOLD_HOURS', 16), // тайм-стоп (часов)
         'level_retest_max_signal_age_minutes' => (int) env('TRADING_LEVEL_RETEST_MAX_SIGNAL_AGE_MINUTES', 15), // макс. возраст закрытой 1h-свечи ретеста (мин) для входа
         'level_retest_min_live_rr' => (float) env('TRADING_LEVEL_RETEST_MIN_LIVE_RR', 1.5), // мин. фактический R:R по текущей цене при открытии сделки
+
+        /*
+        |----------------------------------------------------------------------
+        | SqueezeBreakoutStrategy — стратегия входа №2 (параллельная, 4H)
+        |----------------------------------------------------------------------
+        | Пробой сжатия волатильности BB(20, 2.0) + подтверждение объёмом (>= 1.3x)
+        | и трендом 4H EMA50 (актив + BTC). Выход — скользящий Chandelier ATR
+        | трейлинг-стоп (3.5 ATR) без потолка 2R. Проверена на 8.5 мес. 4H (PF 1.52,
+        | 8/8 пар в плюсе, 3/3 периода) и 3 годах 1D (PF 1.59, 3/3 года).
+        */
+        'squeeze_breakout_enabled' => (bool) env('TRADING_SQUEEZE_BREAKOUT_ENABLED', true),
+        'squeeze_interval' => env('TRADING_SQUEEZE_INTERVAL', '4h'),
+        'squeeze_bb_period' => (int) env('TRADING_SQUEEZE_BB_PERIOD', 20),
+        'squeeze_bb_std_mult' => (float) env('TRADING_SQUEEZE_BB_STD_MULT', 2.0),
+        'squeeze_lookback' => (int) env('TRADING_SQUEEZE_LOOKBACK', 50),
+        'squeeze_percentile' => (float) env('TRADING_SQUEEZE_PERCENTILE', 0.35),
+        'squeeze_window' => (int) env('TRADING_SQUEEZE_WINDOW', 3),
+        'squeeze_volume_mult' => (float) env('TRADING_SQUEEZE_VOLUME_MULT', 1.3),
+        'squeeze_volume_period' => (int) env('TRADING_SQUEEZE_VOLUME_PERIOD', 20),
+        'squeeze_ema_trend_period' => (int) env('TRADING_SQUEEZE_EMA_TREND_PERIOD', 50),
+        'squeeze_init_stop_atr' => (float) env('TRADING_SQUEEZE_INIT_STOP_ATR', 2.0),
+        'squeeze_trail_atr' => (float) env('TRADING_SQUEEZE_TRAIL_ATR', 3.5),
+        'squeeze_min_stop_pct' => (float) env('TRADING_SQUEEZE_MIN_STOP_PCT', 0.40),
+        'squeeze_max_stop_pct' => (float) env('TRADING_SQUEEZE_MAX_STOP_PCT', 10.0),
+        'squeeze_max_hold_hours' => (int) env('TRADING_SQUEEZE_MAX_HOLD_HOURS', 480), // 120 × 4h свечей = 20 дней
+        'squeeze_max_signal_age_minutes' => (int) env('TRADING_SQUEEZE_MAX_SIGNAL_AGE_MINUTES', 30),
         // Динамическая защита для сетапов LevelRetest («пробой диапазона + ретест»):
         // Работает по R-множителям и дополнительно страхуется при уходе цены на >= +0.55% в плюс:
         // При +0.70R (или >= +0.55% прибыли на широких стопах) стоп переносится в безубыток (+0.12% от входа для гарантии покрытия комиссий).

@@ -31,6 +31,8 @@ final class LevelHoldExitStrategy implements ExitStrategyInterface
         private readonly int $maxHoldHours = 16,
         /** Тайм-стоп применяется только к этим типам сигналов (пусто = ко всем). */
         private readonly array $timeStopSignalTypes = [SignalType::LevelRetest->value],
+        /** Индивидуальные лимиты удержания в часах по типу сигнала (переопределяют maxHoldHours). */
+        private readonly array $timeStopHoursBySignal = [],
     ) {}
 
     public function evaluate(RuleContext $ctx, PositionState $position): ?ExitSignal
@@ -48,15 +50,24 @@ final class LevelHoldExitStrategy implements ExitStrategyInterface
         }
 
         // 2. Тайм-стоп: сетап не отработал за отведённое окно.
-        if ($this->maxHoldHours > 0
+        $holdLimit = $this->maxHoldHoursFor($position);
+        if ($holdLimit > 0
             && $position->openedAt instanceof CarbonInterface
-            && $this->appliesTimeStop($position)
-            && $position->openedAt->diffInHours(Carbon::now()) >= $this->maxHoldHours
+            && $position->openedAt->diffInHours(Carbon::now()) >= $holdLimit
         ) {
             return new ExitSignal(ExitType::TimeStop, 100);
         }
 
         return null;
+    }
+
+    private function maxHoldHoursFor(PositionState $position): int
+    {
+        if ($position->signalType !== null && array_key_exists($position->signalType, $this->timeStopHoursBySignal)) {
+            return (int) $this->timeStopHoursBySignal[$position->signalType];
+        }
+
+        return $this->appliesTimeStop($position) ? $this->maxHoldHours : 0;
     }
 
     private function appliesTimeStop(PositionState $position): bool

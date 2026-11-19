@@ -61,13 +61,24 @@ final class PositionManager
         ?float $atr = null,
         ?array $btcCandles = null,
         ?array $btcHtfCandles = null,
+        ?array $symbolHtfCandles = null,
     ): AgentResult {
         $open = $this->openPosition($symbol, $interval);
+
+        // If another strategy on a different timeframe already holds a position on this symbol,
+        // do not manage it with mismatched candles and do not open a second leg on BingX.
+        if ($open !== null && $open->interval !== null && $open->interval !== $interval) {
+            return new AgentResult(
+                entrySignal: null,
+                exitSignal: null,
+                indicators: new IndicatorSnapshot(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, $atr ?? 0.0),
+            );
+        }
 
         $state = $open !== null ? $this->toState($open) : null;
         $recent = $open !== null ? [] : $this->recentSignalTypes($symbol, $interval);
 
-        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval, $btcCandles, $btcHtfCandles);
+        $result = $this->agent->evaluate($candles, $level, $atr, $state, $recent, $symbol, $interval, $btcCandles, $btcHtfCandles, $symbolHtfCandles);
 
         $excluded = (array) ($this->config['excluded_symbols'] ?? []);
         $isExcluded = in_array($symbol, $excluded, true);
@@ -76,15 +87,19 @@ final class PositionManager
             $position = $this->applyExit($open, $result->exitSignal, $this->currentPrice($candles));
             $this->attachChart($position, $candles);
         } elseif ($open !== null) {
-            $livePrice = $this->currentPrice($candles);
-            $this->manageDynamicProtection($open, $this->favorablePriceSinceOpen($open, $candles), $livePrice);
+            if ($open->signal_type === SignalType::SqueezeBreakout->value) {
+                $this->manageChandelierTrailing($open, $candles);
+            } else {
+                $livePrice = $this->currentPrice($candles);
+                $this->manageDynamicProtection($open, $this->favorablePriceSinceOpen($open, $candles), $livePrice);
+            }
         } elseif ($open === null
             && $result->entrySignal !== null
             && ! $isExcluded
             && $this->hasSufficientLiveRiskReward($result->entrySignal, $this->currentPrice($candles))
-            && ! $this->hasReachedMaxOpenPositions()
-            && ! $this->hasReachedMaxPositionsInDirection($result->entrySignal->direction->value)
-            && ! $this->hasRecentPortfolioEntry()
+            && ! $this->hasReachedMaxOpenPositions($result->entrySignal->type->value)
+            && ! $this->hasReachedMaxPositionsInDirection($result->entrySignal->direction->value, $result->entrySignal->type->value)
+            && ! $this->hasRecentPortfolioEntry($result->entrySignal->type->value)
             && ! $this->isCoolingDown($symbol)
             && ! $this->isDailyLossLimitReached()
         ) {
@@ -245,10 +260,13 @@ final class PositionManager
      */
     private function sizePosition(EntrySignal $signal, ?string $symbol = null): float
     {
+        $strategyRisk = isset($this->config['strategy_risk_pct'][$signal->type->value])
+            ? (float) $this->config['strategy_risk_pct'][$signal->type->value]
+            : null;
         $symbolRisk = ($symbol !== null && isset($this->config['symbol_risk_pct'][$symbol]))
             ? (float) $this->config['symbol_risk_pct'][$symbol]
             : null;
-        $riskPct = $symbolRisk ?? (float) ($this->config['risk_percent'] ?? 1.0);
+        $riskPct = $strategyRisk ?? $symbolRisk ?? (float) ($this->config['risk_percent'] ?? 1.0);
         $maxQty = (float) ($this->config['max_quantity'] ?? 0.0);
 
         $riskPerUnit = abs($signal->entryPrice - $signal->stop);
@@ -305,10 +323,22 @@ final class PositionManager
     }
 
     /**
-     * Whether the maximum number of concurrent open positions across all symbols has been reached.
+     * Whether the maximum number of concurrent open positions (global or per-strategy) has been reached.
      */
-    public function hasReachedMaxOpenPositions(): bool
+    public function hasReachedMaxOpenPositions(?string $signalType = null): bool
     {
+        if ($signalType !== null && isset($this->config['strategy_max_open_positions'][$signalType])) {
+            $strategyMax = (int) $this->config['strategy_max_open_positions'][$signalType];
+            if ($strategyMax > 0) {
+                $strategyOpen = Position::query()->open()->where('signal_type', $signalType)->count();
+                if ($strategyOpen >= $strategyMax) {
+                    Log::info("[risk_guard] Maximum open {$signalType} positions limit reached ({$strategyOpen}/{$strategyMax}). Skipping entry.");
+
+                    return true;
+                }
+            }
+        }
+
         $max = (int) ($this->config['max_open_positions'] ?? 0);
         if ($max <= 0) {
             return false;
@@ -325,10 +355,29 @@ final class PositionManager
     }
 
     /**
-     * Whether the maximum number of open positions in the given direction across all symbols has been reached.
+     * Whether the maximum number of open positions in the given direction has been reached.
      */
-    public function hasReachedMaxPositionsInDirection(string $direction): bool
+    public function hasReachedMaxPositionsInDirection(string $direction, ?string $signalType = null): bool
     {
+        if ($signalType !== null && isset($this->config['strategy_max_positions_per_direction'][$signalType])) {
+            $strategyMaxDir = (int) $this->config['strategy_max_positions_per_direction'][$signalType];
+            if ($strategyMaxDir <= 0) {
+                return false;
+            }
+
+            $count = Position::query()->open()
+                ->where('signal_type', $signalType)
+                ->where('direction', $direction)
+                ->count();
+            if ($count >= $strategyMaxDir) {
+                Log::info("[risk_guard] Maximum open {$signalType} {$direction} positions limit reached ({$count}/{$strategyMaxDir}). Skipping entry.");
+
+                return true;
+            }
+
+            return false;
+        }
+
         $max = (int) ($this->config['max_positions_per_direction'] ?? 0);
         if ($max <= 0) {
             return false;
@@ -347,16 +396,26 @@ final class PositionManager
     /**
      * Whether any position across all symbols was opened within the stagger interval.
      */
-    public function hasRecentPortfolioEntry(): bool
+    public function hasRecentPortfolioEntry(?string $signalType = null): bool
     {
+        // 4h SqueezeBreakout strategies can legitimately break out on 2 pairs on the same 4h bar
+        // (capped by strategy_max_open_positions).
+        if ($signalType === SignalType::SqueezeBreakout->value) {
+            return false;
+        }
+
         $minutes = (int) ($this->config['min_entry_interval_minutes'] ?? 0);
         if ($minutes <= 0) {
             return false;
         }
 
         $since = Carbon::now()->subMinutes($minutes);
-        $recent = Position::query()->where('opened_at', '>=', $since)->exists();
-        if ($recent) {
+        $query = Position::query()->where('opened_at', '>=', $since);
+        if ($signalType !== null) {
+            $query->where('signal_type', $signalType);
+        }
+
+        if ($query->exists()) {
             Log::info("[risk_guard] A position was opened within the last {$minutes}m. Staggering entries to prevent clustering. Skipping entry.");
 
             return true;
@@ -882,5 +941,192 @@ final class PositionManager
         ]);
 
         return $newStop;
+    }
+
+    /**
+     * Chandelier ATR trailing stop for SQUEEZE_BREAKOUT (4h) positions.
+     *
+     * Runs strictly on closed candles to avoid intra-bar whipsaws: tracks the
+     * best favorable extreme reached since open and trails stop by
+     * `squeeze_trail_atr * ATR(14)` only in the profitable direction.
+     *
+     * @param  array<int, Candle>  $candles
+     */
+    public function manageChandelierTrailing(Position $position, array $candles): ?float
+    {
+        $livePrice = $this->currentPrice($candles);
+        if ($livePrice <= 0.0 || $position->entry_price <= 0.0) {
+            return null;
+        }
+
+        $closed = array_values($candles);
+        $nowSec = Carbon::now()->timestamp;
+        while ($closed !== [] && intdiv((int) end($closed)->closeTime, 1000) >= $nowSec) {
+            array_pop($closed);
+        }
+
+        if (count($closed) < 16) {
+            return null;
+        }
+
+        $atr = $this->wilderAtr($closed, 14);
+        if ($atr <= 0.0) {
+            return null;
+        }
+
+        $agentConfig = (array) ($this->config['agent'] ?? []);
+        $trailMult = (float) ($agentConfig['squeeze_trail_atr'] ?? $this->config['squeeze_trail_atr'] ?? 3.5);
+        if ($trailMult <= 0.0) {
+            return null;
+        }
+
+        $isLong = $position->direction() === Direction::Long;
+        $openedAtMs = $position->opened_at !== null
+            ? (int) ($position->opened_at->getTimestamp() * 1000)
+            : null;
+
+        $intervalSec = (int) (config("exchange.timeframes.{$position->interval}") ?? 14400);
+        $intervalMs = max(60_000, $intervalSec * 1000);
+        $minOpenTime = $openedAtMs !== null
+            ? (int) (floor($openedAtMs / $intervalMs) * $intervalMs)
+            : null;
+
+        $exitContext = (array) ($position->exit_context ?? []);
+        $bestPrice = isset($exitContext['protection']['best_price'])
+            ? (float) $exitContext['protection']['best_price']
+            : (float) $position->entry_price;
+
+        $seenClosedAfterOpen = false;
+        foreach ($closed as $bar) {
+            if ($minOpenTime !== null && $bar->openTime < $minOpenTime) {
+                continue;
+            }
+            $seenClosedAfterOpen = true;
+            if ($isLong && $bar->high > $bestPrice) {
+                $bestPrice = $bar->high;
+            } elseif (! $isLong && $bar->low > 0.0 && $bar->low < $bestPrice) {
+                $bestPrice = $bar->low;
+            }
+        }
+
+        if (! $seenClosedAfterOpen) {
+            return null;
+        }
+
+        $candidateStop = $isLong
+            ? ($bestPrice - $trailMult * $atr)
+            : ($bestPrice + $trailMult * $atr);
+
+        $isBetter = $isLong
+            ? ($candidateStop > $position->stop_price)
+            : ($candidateStop < $position->stop_price);
+
+        if (! $isBetter) {
+            return null;
+        }
+
+        $minShiftPct = (float) ($agentConfig['protection_min_shift_pct'] ?? $this->config['protection_min_shift_pct'] ?? 0.03) / 100.0;
+        $shiftPct = abs($candidateStop - $position->stop_price) / $position->entry_price;
+        if ($shiftPct < $minShiftPct) {
+            return null;
+        }
+
+        $newStop = ContractPrecision::roundPrice($candidateStop, $position->symbol);
+
+        // Validate against live market price before sending to BingX.
+        if (($isLong && $newStop >= $livePrice) || (! $isLong && $newStop <= $livePrice)) {
+            Log::info(sprintf(
+                '[dynamic_protection] Skipping chandelier trail for %s %s to %.6f: live price %.6f already crossed candidate stop',
+                $position->symbol,
+                $position->direction,
+                $newStop,
+                $livePrice
+            ));
+
+            return null;
+        }
+
+        $profitPct = $isLong
+            ? (($livePrice - $position->entry_price) / $position->entry_price) * 100.0
+            : (($position->entry_price - $livePrice) / $position->entry_price) * 100.0;
+
+        Log::info(sprintf(
+            '[dynamic_protection] Relocating stop for %s %s: %.6f -> %.6f (chandelier_trail, best: %.6f, atr: %.6f, profit: %.2f%%)',
+            $position->symbol,
+            $position->direction,
+            $position->stop_price,
+            $newStop,
+            $bestPrice,
+            $atr,
+            $profitPct
+        ));
+
+        $qty = ($position->quantity && $position->quantity > 0.0)
+            ? $position->quantity * ($position->size ?? 1.0)
+            : null;
+        $moveResult = $this->executor->moveStop($position->symbol, $position->direction(), $newStop, $qty);
+        if (! $moveResult->ok) {
+            Log::warning(sprintf(
+                '[dynamic_protection] Exchange chandelier stop relocation rejected for %s %s to %.6f: %s',
+                $position->symbol,
+                $position->direction,
+                $newStop,
+                $moveResult->error
+            ));
+
+            return null;
+        }
+
+        $initialStop = $exitContext['protection']['initial_stop']
+            ?? $position->entry_context['signal']['stop']
+            ?? $position->stop_price;
+
+        $exitContext['protection'] = [
+            'reason' => 'chandelier_trail',
+            'best_price' => $bestPrice,
+            'atr' => round($atr, 6),
+            'profit_pct' => round($profitPct, 3),
+            'breakeven_set' => $isLong ? ($newStop >= $position->entry_price) : ($newStop <= $position->entry_price),
+            'initial_stop' => $initialStop,
+            'updated_at' => Carbon::now()->toIso8601String(),
+        ];
+
+        $position->update([
+            'stop_price' => $newStop,
+            'exit_context' => $exitContext,
+        ]);
+
+        return $newStop;
+    }
+
+    /**
+     * Wilder ATR(14) over closed candles.
+     *
+     * @param  array<int, Candle>  $candles
+     */
+    private function wilderAtr(array $candles, int $period = 14): float
+    {
+        $n = count($candles);
+        if ($n <= $period) {
+            return 0.0;
+        }
+
+        $tr = array_fill(0, $n, 0.0);
+        $tr[0] = $candles[0]->high - $candles[0]->low;
+        for ($i = 1; $i < $n; $i++) {
+            $pc = $candles[$i - 1]->close;
+            $tr[$i] = max(
+                $candles[$i]->high - $candles[$i]->low,
+                abs($candles[$i]->high - $pc),
+                abs($candles[$i]->low - $pc),
+            );
+        }
+
+        $atr = array_sum(array_slice($tr, 1, $period)) / $period;
+        for ($i = $period + 1; $i < $n; $i++) {
+            $atr = ($atr * ($period - 1) + $tr[$i]) / $period;
+        }
+
+        return $atr;
     }
 }

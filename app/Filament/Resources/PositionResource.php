@@ -108,7 +108,8 @@ class PositionResource extends Resource
                     ->badge()
                     ->color('info')
                     ->formatStateUsing(fn (string $state): string => match ($state) {
-                        SignalType::LevelRetest->value   => 'LEVEL RETEST',
+                        SignalType::LevelRetest->value     => 'LEVEL RETEST',
+                        SignalType::SqueezeBreakout->value => 'SQUEEZE 4H',
                         SignalType::Bounce->value        => 'BOUNCE',
                         SignalType::Retest->value        => 'RETEST',
                         SignalType::FalseBreakout->value => 'FAKEOUT',
@@ -254,7 +255,8 @@ class PositionResource extends Resource
                 SelectFilter::make('signal_type')
                     ->label('Тип сигнала')
                     ->options([
-                        SignalType::LevelRetest->value   => 'Level Retest',
+                        SignalType::LevelRetest->value     => 'Level Retest',
+                        SignalType::SqueezeBreakout->value => 'Squeeze Breakout (4H)',
                         SignalType::Bounce->value        => 'Bounce',
                         SignalType::Retest->value        => 'Retest',
                         SignalType::FalseBreakout->value => 'False Breakout',

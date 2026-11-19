@@ -604,6 +604,7 @@ class PositionManagerTest extends TestCase
                 ?string $interval = null,
                 ?array $btcCandles = null,
                 ?array $btcHtfCandles = null,
+                ?array $symbolHtfCandles = null,
             ): \App\Trading\DTO\AgentResult {
                 return new \App\Trading\DTO\AgentResult(
                     entrySignal: null,
@@ -1049,6 +1050,7 @@ class PositionManagerTest extends TestCase
                 ?string $interval = null,
                 ?array $btcCandles = null,
                 ?array $btcHtfCandles = null,
+                ?array $symbolHtfCandles = null,
             ): \App\Trading\DTO\AgentResult {
                 return new \App\Trading\DTO\AgentResult(
                     entrySignal: $this->signal,

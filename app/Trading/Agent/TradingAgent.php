@@ -26,10 +26,14 @@ use App\Trading\DTO\ExitSignal;
 use App\Trading\DTO\IndicatorSnapshot;
 // Импорт состояния открытой позиции
 use App\Trading\DTO\PositionState;
-// Импорт активной стратегии входа (пробой диапазона + ретест уровня)
+// Импорт активной стратегии входа №1 (пробой диапазона + ретест уровня, 1h)
 use App\Trading\Strategies\Entry\LevelRetestStrategy;
+// Импорт активной стратегии входа №2 (пробой сжатия волатильности, 4h)
+use App\Trading\Strategies\Entry\SqueezeBreakoutStrategy;
 // Импорт стратегии BTC Lead-Lag (отключена по умолчанию)
 use App\Trading\Strategies\Entry\BtcLeadLagStrategy;
+// Импорт Enums
+use App\Trading\Enums\SignalType;
 // Импорт стратегии раннего разворота (отключена по умолчанию)
 use App\Trading\Strategies\Exit\EarlyReversalStrategy;
 // Импорт стратегии стоп-лосса
@@ -73,11 +77,12 @@ final class TradingAgent implements TradingAgentInterface
         $this->guard = $guard ?? new EntryGuard($this->config);
 
         // Регистрация набора стратегий входа по умолчанию.
-        // Активна ровно одна стратегия — «Пробой диапазона + ретест уровня»
-        // (LEVEL_RETEST). Скальп-отскок Bounce и остальные легаси-стратегии
-        // отключены как убыточные (см. торговую статистику в AGENTS.md).
+        // Параллельно работают 2 стратегии на разных таймфреймах:
+        //   1) LEVEL_RETEST (1h) — «Пробой диапазона + ретест уровня» (с доработанными фильтрами: stop >= 1.0%, 4H EMA50).
+        //   2) SQUEEZE_BREAKOUT (4h) — «Пробой сжатия волатильности» со скользящим Chandelier ATR стопом.
         $leadLagEnabled = (bool) ($this->config['lead_lag_enabled'] ?? false);
         $levelRetestEnabled = (bool) ($this->config['level_retest_enabled'] ?? true);
+        $squeezeBreakoutEnabled = (bool) ($this->config['squeeze_breakout_enabled'] ?? true);
         $defaultStrategies = [];
 
         if ($levelRetestEnabled) {
@@ -94,12 +99,32 @@ final class TradingAgent implements TradingAgentInterface
                 retestBodyAtr: (float) ($this->config['level_retest_retest_body_atr'] ?? 0.05),
                 failAtr: (float) ($this->config['level_retest_fail_atr'] ?? 0.35),
                 stopBufferAtr: (float) ($this->config['level_retest_stop_buffer_atr'] ?? 0.15),
-                minStopPercent: (float) ($this->config['level_retest_min_stop_pct'] ?? 0.40),
+                minStopPercent: (float) ($this->config['level_retest_min_stop_pct'] ?? 1.00),
                 maxStopPercent: (float) ($this->config['level_retest_max_stop_pct'] ?? 1.80),
                 targetR: (float) ($this->config['level_retest_target_r'] ?? 2.0),
                 minEntryScore: 100.0,
                 requiredInterval: (string) ($this->config['level_retest_interval'] ?? '1h'),
                 maxSignalAgeMinutes: (int) ($this->config['level_retest_max_signal_age_minutes'] ?? 15),
+            );
+        }
+
+        if ($squeezeBreakoutEnabled) {
+            $defaultStrategies[] = new SqueezeBreakoutStrategy(
+                logger: $logger,
+                bbPeriod: (int) ($this->config['squeeze_bb_period'] ?? 20),
+                bbStdMult: (float) ($this->config['squeeze_bb_std_mult'] ?? 2.0),
+                squeezeLookback: (int) ($this->config['squeeze_lookback'] ?? 50),
+                squeezePercentile: (float) ($this->config['squeeze_percentile'] ?? 0.35),
+                squeezeWindow: (int) ($this->config['squeeze_window'] ?? 3),
+                volumeMultiplier: (float) ($this->config['squeeze_volume_mult'] ?? 1.3),
+                volumePeriod: (int) ($this->config['squeeze_volume_period'] ?? 20),
+                emaTrendPeriod: (int) ($this->config['squeeze_ema_trend_period'] ?? 50),
+                initStopAtr: (float) ($this->config['squeeze_init_stop_atr'] ?? 2.0),
+                minStopPercent: (float) ($this->config['squeeze_min_stop_pct'] ?? 0.40),
+                maxStopPercent: (float) ($this->config['squeeze_max_stop_pct'] ?? 10.0),
+                minEntryScore: 100.0,
+                requiredInterval: (string) ($this->config['squeeze_interval'] ?? '4h'),
+                maxSignalAgeMinutes: (int) ($this->config['squeeze_max_signal_age_minutes'] ?? 30),
             );
         }
 
@@ -121,6 +146,10 @@ final class TradingAgent implements TradingAgentInterface
             new StopLossStrategy,
             new LevelHoldExitStrategy(
                 maxHoldHours: (int) ($this->config['level_retest_max_hold_hours'] ?? 16),
+                timeStopHoursBySignal: [
+                    SignalType::LevelRetest->value => (int) ($this->config['level_retest_max_hold_hours'] ?? 16),
+                    SignalType::SqueezeBreakout->value => (int) ($this->config['squeeze_max_hold_hours'] ?? 480),
+                ],
             ),
             new EarlyReversalStrategy($this->config),
         ];
@@ -139,6 +168,7 @@ final class TradingAgent implements TradingAgentInterface
         ?string $interval = null,
         ?array $btcCandles = null,
         ?array $btcHtfCandles = null,
+        ?array $symbolHtfCandles = null,
     ): AgentResult {
         // Сбрасываем ключи массива свечей
         $candles = array_values($candles);
@@ -180,6 +210,20 @@ final class TradingAgent implements TradingAgentInterface
             $btcHtfEma50 = SeriesMath::ema($btcHtfCloses, 50);
         }
 
+        // Вычисляем EMA50 старшего таймфрейма самого актива (4h), если переданы
+        $symbolHtfEma50 = null;
+        if (! empty($symbolHtfCandles) && count($symbolHtfCandles) >= 50) {
+            $symbolHtfCandles = array_values($symbolHtfCandles);
+            $nowSec = \Illuminate\Support\Carbon::now()->timestamp;
+            while ($symbolHtfCandles !== [] && intdiv((int) end($symbolHtfCandles)->closeTime, 1000) >= $nowSec) {
+                array_pop($symbolHtfCandles);
+            }
+            if (count($symbolHtfCandles) >= 50) {
+                $symHtfCloses = array_map(static fn (Candle $c) => $c->close, $symbolHtfCandles);
+                $symbolHtfEma50 = SeriesMath::ema($symHtfCloses, 50);
+            }
+        }
+
         // Создаем снимок текущих значений индикаторов
         $indicators = $this->createIndicatorSnapshot($candles, $atr, $ema8, $ema21, $ema50, $macd);
         // Создаем объект контекста правил со всеми данными
@@ -201,6 +245,8 @@ final class TradingAgent implements TradingAgentInterface
             $btcHtfEma8,
             $btcHtfEma21,
             $btcHtfEma50,
+            $symbolHtfCandles,
+            $symbolHtfEma50,
         );
 
         // Если есть открытая позиция — проверяем стратегии выхода

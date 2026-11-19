@@ -298,12 +298,11 @@ final class LevelRetestStrategy implements EntryStrategyInterface
         $stopDistance = abs($entry - $stop);
         if ($entry > 0.0 && $stopDistance > 0.0) {
             $stopPercent = $stopDistance / $entry * 100.0;
-            $riskOk = $stopPercent <= $this->maxStopPercent;
+            // Узкие часовые стопы (< minStopPercent) отсекаем, а не искусственно
+            // раздуваем: диагностика на 4.5 мес. показала WR 33.6% и -$1,221 на
+            // стопах < 1.2%, тогда как >= 1.0–1.2% дают уверенный плюс.
+            $riskOk = $stopPercent >= $this->minStopPercent && $stopPercent <= $this->maxStopPercent;
             if ($riskOk) {
-                if ($stopPercent < $this->minStopPercent) {
-                    $stopDistance = $entry * $this->minStopPercent / 100.0;
-                    $stop = $isLong ? $entry - $stopDistance : $entry + $stopDistance;
-                }
                 $target = $isLong
                     ? $entry + $stopDistance * $this->targetR
                     : $entry - $stopDistance * $this->targetR;
@@ -327,7 +326,7 @@ final class LevelRetestStrategy implements EntryStrategyInterface
             key: 'risk_window',
             name: 'Риск в допустимом окне (стоп технический)',
             passed: $riskOk,
-            expected: sprintf('<= %.2f%% от входа', $this->maxStopPercent),
+            expected: sprintf('%.2f%% .. %.2f%% от входа', $this->minStopPercent, $this->maxStopPercent),
             actual: $entry > 0.0 ? sprintf('%.2f%%', $stopDistance / $entry * 100.0) : 'н/д',
             actualValue: $stopDistance,
         );

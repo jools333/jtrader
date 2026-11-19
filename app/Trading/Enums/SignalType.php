@@ -18,4 +18,5 @@ enum SignalType: string
     case TrendPullback = 'TREND_PULLBACK';
     case BtcLeadLag = 'BTC_LEAD_LAG';
     case LevelRetest = 'LEVEL_RETEST';
+    case SqueezeBreakout = 'SQUEEZE_BREAKOUT';
 }

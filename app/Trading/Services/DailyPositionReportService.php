@@ -429,6 +429,7 @@ class DailyPositionReportService
     {
         return match ($signalType) {
             SignalType::LevelRetest->value => 'LEVEL_RETEST',
+            SignalType::SqueezeBreakout->value => 'SQUEEZE_4H',
             SignalType::Bounce->value => 'BOUNCE',
             SignalType::Retest->value => 'RETEST',
             SignalType::FalseBreakout->value => 'FAKEOUT',

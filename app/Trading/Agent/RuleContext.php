@@ -47,6 +47,8 @@ final class RuleContext
         public readonly ?array $btcHtfEma8 = null,
         public readonly ?array $btcHtfEma21 = null,
         public readonly ?array $btcHtfEma50 = null,
+        public readonly ?array $symbolHtfCandles = null,
+        public readonly ?array $symbolHtfEma50 = null,
     ) {
         $this->n = count($candles);
         $this->i = $this->n - 1;
@@ -476,6 +478,32 @@ final class RuleContext
         }
 
         return $lastCandle->volume >= $avgVol * $multiplier;
+    }
+
+    /** Whether higher-timeframe (e.g. 4h) data for the current symbol is available. */
+    public function hasSymbolHtfData(): bool
+    {
+        return ! empty($this->symbolHtfCandles) && ! empty($this->symbolHtfEma50);
+    }
+
+    /** Latest closed (or current) price on the symbol's higher timeframe. */
+    public function symbolHtfLastPrice(): ?float
+    {
+        if (empty($this->symbolHtfCandles)) {
+            return null;
+        }
+
+        return $this->symbolHtfCandles[count($this->symbolHtfCandles) - 1]->close;
+    }
+
+    /** Latest EMA50 on the symbol's higher timeframe. */
+    public function symbolHtfEma50(): ?float
+    {
+        if (empty($this->symbolHtfEma50)) {
+            return null;
+        }
+
+        return $this->symbolHtfEma50[count($this->symbolHtfEma50) - 1];
     }
 }
 

@@ -93,20 +93,21 @@ final class BingXTradeExecutor implements TradeExecutorInterface
 
         // Ensure rounded stop & TP do not collapse into entry price
         $stopPrice = ContractPrecision::roundPrice($signal->stop, $symbol);
-        $target1 = ContractPrecision::roundPrice($signal->target1, $symbol);
+        $hasTakeProfit = $signal->target1 > 0.0;
+        $target1 = $hasTakeProfit ? ContractPrecision::roundPrice($signal->target1, $symbol) : 0.0;
 
         if ($signal->direction === Direction::Long) {
             if ($stopPrice >= $entryPrice) {
                 $stopPrice = round($entryPrice - $minTick, $priceDecimals);
             }
-            if ($target1 <= $entryPrice) {
+            if ($hasTakeProfit && $target1 <= $entryPrice) {
                 $target1 = round($entryPrice + $minTick, $priceDecimals);
             }
         } else {
             if ($stopPrice <= $entryPrice) {
                 $stopPrice = round($entryPrice + $minTick, $priceDecimals);
             }
-            if ($target1 >= $entryPrice) {
+            if ($hasTakeProfit && $target1 >= $entryPrice) {
                 $target1 = round($entryPrice - $minTick, $priceDecimals);
             }
         }
@@ -120,11 +121,14 @@ final class BingXTradeExecutor implements TradeExecutorInterface
             'positionSide' => $positionSide,
             'type' => $entryType,
             'quantity' => $orderQuantity,
-            // Server-side protective orders so the position is covered even if
+            // Server-side protective stop so the position is covered even if
             // the agent process dies between bars.
-            'takeProfit' => $this->bracket($tpType, $target1, $tpPrice),
             'stopLoss' => $this->bracket('STOP_MARKET', $stopPrice),
         ];
+
+        if ($hasTakeProfit) {
+            $params['takeProfit'] = $this->bracket($tpType, $target1, $tpPrice);
+        }
 
         if ($entryType === 'LIMIT') {
             $params['price'] = $entryPrice;

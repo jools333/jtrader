@@ -81,8 +81,9 @@ class AgentScan extends Command
         $btcCandles = $symbol !== 'BTC-USDT' ? $candlesRepo->recent('BTC-USDT', $interval) : null;
         $htfInterval = (string) config('trading.agent.btc_htf_interval', '1h');
         $btcHtfCandles = $symbol !== 'BTC-USDT' ? $candlesRepo->recent('BTC-USDT', $htfInterval) : null;
+        $symbolHtfCandles = $interval === '1h' ? $candlesRepo->recent($symbol, '4h', 120) : null;
 
-        $result = $manager->process($symbol, $interval, $candles, $level, $atr, $btcCandles, $btcHtfCandles);
+        $result = $manager->process($symbol, $interval, $candles, $level, $atr, $btcCandles, $btcHtfCandles, $symbolHtfCandles);
 
         $entry = $result->entrySignal ? $result->entrySignal->type->value.' '.$result->entrySignal->direction->value : '—';
         $exit = $result->exitSignal ? $result->exitSignal->type->value : '—';

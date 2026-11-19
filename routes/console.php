@@ -11,12 +11,16 @@ Artisan::command('inspire', function () {
 // Candle data is now kept live by the `ws` container (candles:ws WebSocket stream).
 // candles:sync remains available for manual one-off pulls and as a fallback seed.
 
-// Активная стратегия работает на закрытых 1h-свечах для входов, но запускается
-// каждую минуту, чтобы оперативно проверять безубыток (Break-Even) и Lock-Profit
-// по открытой позиции без 5-минутных слепых зон.
-Schedule::command('agent:scan')
+// Стратегия №1 (LEVEL_RETEST, 1h): скан каждую минуту для входов и управления позициями.
+Schedule::command('agent:scan --interval=1h')
     ->everyMinute()
     ->withoutOverlapping(5);
+
+// Стратегия №2 (SQUEEZE_BREAKOUT, 4h): скан раз в 5 минут для входов по закрытию 4h-свечи
+// и подтягивания Chandelier ATR трейлинг-стопа.
+Schedule::command('agent:scan --interval=4h')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10);
 
 Schedule::command('strategy:render-outcomes')
     ->everyTwoMinutes()

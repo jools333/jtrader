@@ -36,5 +36,7 @@ interface TradingAgentInterface
         ?string $symbol = null,
         ?string $interval = null,
         ?array $btcCandles = null,
+        ?array $btcHtfCandles = null,
+        ?array $symbolHtfCandles = null,
     ): AgentResult;
 }
