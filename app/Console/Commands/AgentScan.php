@@ -73,9 +73,15 @@ class AgentScan extends Command
         $atr = $analyzer->atr($symbol, $interval);
         $level = $this->nearestLevel($analyzer->levels($symbol, $levelInterval), $candles);
         if ($level === null) {
-            $this->line(sprintf('  <comment>–</comment> %s %s — no levels on %s', $symbol, $interval, $levelInterval));
+            // 4H SqueezeBreakout does not depend on 1D S/R levels; fall back to current close
+            // so a pair is never skipped merely because higher-timeframe levels are empty.
+            if ($interval === '4h') {
+                $level = $candles[count($candles) - 1]->close;
+            } else {
+                $this->line(sprintf('  <comment>–</comment> %s %s — no levels on %s', $symbol, $interval, $levelInterval));
 
-            return;
+                return;
+            }
         }
 
         $btcCandles = $symbol !== 'BTC-USDT' ? $candlesRepo->recent('BTC-USDT', $interval) : null;

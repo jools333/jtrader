@@ -144,6 +144,7 @@ class PositionManagerTest extends TestCase
             config: array_merge((array) config('trading'), [
                 'risk_percent' => 1.0,
                 'symbol_risk_pct' => ['ADA-USDT' => 0.75],
+                'excluded_symbols' => [],
                 'paper_balance' => 1_000.0,
                 'max_position_pct' => 0.0,
             ]),
@@ -1107,5 +1108,97 @@ class PositionManagerTest extends TestCase
         $this->assertNull($manager->manageDynamicProtection($pos, 103.0, 103.0));
         $pos->refresh();
         $this->assertEquals(98.0, $pos->stop_price);
+    }
+
+    public function test_chandelier_trailing_moves_stop_on_closed_4h_bars_and_respects_live_price(): void
+    {
+        $barMs = 14_400_000;
+        // Start 30 closed 4h bars in the past so all setup bars are strictly closed.
+        $baseOpenMs = (int) (floor((now()->subHours(130)->getTimestamp() * 1000) / $barMs) * $barMs);
+
+        $candles = [];
+        for ($i = 0; $i < 20; $i++) {
+            $openMs = $baseOpenMs + $i * $barMs;
+            $candles[] = new \App\Market\DTO\Candle($openMs, 100.0, 101.0, 99.0, 100.0, 100.0, $openMs + $barMs - 1);
+        }
+
+        // Position opened at bar 20 (entry 100.0, initial stop 96.0, ATR ~ 2.0, 3.5 * ATR ~ 7.0).
+        $entryBarOpenMs = $baseOpenMs + 20 * $barMs;
+        $pos = Position::create([
+            'symbol' => 'ETH-USDT',
+            'interval' => '4h',
+            'direction' => 'LONG',
+            'signal_type' => \App\Trading\Enums\SignalType::SqueezeBreakout->value,
+            'status' => Position::STATUS_OPEN,
+            'entry_price' => 100.0,
+            'stop_price' => 96.0,
+            'target1' => 0.0,
+            'target2' => 0.0,
+            'quantity' => 1.0,
+            'size' => 1.0,
+            'opened_at' => \Illuminate\Support\Carbon::createFromTimestampMs($entryBarOpenMs + 15_000),
+        ]);
+
+        $manager = new PositionManager(
+            agent: $this->agent(),
+            executor: new PaperTradeExecutor(Log::getLogger(), 1_000.0),
+            config: array_merge((array) config('trading'), [
+                'agent' => array_merge((array) config('trading.agent'), [
+                    'squeeze_trail_atr' => 3.5,
+                    'protection_min_shift_pct' => 0.03,
+                ]),
+            ]),
+        );
+
+        // 1. Before any post-entry 4h bar closes (only current in-progress bar exists) -> no stop move.
+        $inProgressBar = new \App\Market\DTO\Candle(
+            $entryBarOpenMs,
+            100.0,
+            115.0,
+            99.5,
+            114.0,
+            150.0,
+            now()->addHour()->getTimestamp() * 1000,
+        );
+        $this->assertNull($manager->manageChandelierTrailing($pos, array_merge($candles, [$inProgressBar])));
+        $pos->refresh();
+        $this->assertEquals(96.0, $pos->stop_price);
+
+        // 2. Closed 4h bar reaches high=112.0, close=111.0 (ATR ~ 2.7 -> 3.5*ATR ~ 9.5 -> stop ~ 102.5 > entry 100).
+        $closedBar1 = new \App\Market\DTO\Candle(
+            $entryBarOpenMs,
+            100.0,
+            112.0,
+            100.0,
+            111.0,
+            200.0,
+            $entryBarOpenMs + $barMs - 1,
+        );
+        $candlesWithClosed = array_merge($candles, [$closedBar1]);
+        $movedStop = $manager->manageChandelierTrailing($pos, $candlesWithClosed);
+
+        $this->assertNotNull($movedStop);
+        $this->assertGreaterThan(100.0, $movedStop);
+        $this->assertLessThan(111.0, $movedStop);
+
+        $pos->refresh();
+        $this->assertEquals($movedStop, $pos->stop_price);
+        $this->assertSame('chandelier_trail', $pos->exit_context['protection']['reason'] ?? null);
+        $this->assertEquals(112.0, $pos->exit_context['protection']['best_price'] ?? null);
+        $this->assertTrue($pos->exit_context['protection']['breakeven_set'] ?? false);
+
+        // 3. Subsequent pullback bar must NEVER widen (lower) the stop.
+        $closedBar2 = new \App\Market\DTO\Candle(
+            $entryBarOpenMs + $barMs,
+            111.0,
+            111.2,
+            104.0,
+            105.0,
+            120.0,
+            $entryBarOpenMs + 2 * $barMs - 1,
+        );
+        $this->assertNull($manager->manageChandelierTrailing($pos, array_merge($candlesWithClosed, [$closedBar2])));
+        $pos->refresh();
+        $this->assertEquals($movedStop, $pos->stop_price);
     }
 }

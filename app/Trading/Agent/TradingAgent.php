@@ -186,16 +186,26 @@ final class TradingAgent implements TradingAgentInterface
         $ema50 = SeriesMath::ema($closes, 50);
         $macd = SeriesMath::macd($closes, 12, 26, 9);
 
-        // Вычисляем индикаторы BTC, если свечи переданы
+        // Вычисляем индикаторы BTC, если свечи переданы.
+        // Для 4h/1d стратегий отбрасываем незакрытую текущую свечу BTC, чтобы фильтр
+        // BTC EMA50 совпадал с закрытием сигнального бара (как в бэктесте).
         $btcEma8 = null;
         $btcEma21 = null;
         $btcEma50 = null;
         if (! empty($btcCandles) && count($btcCandles) >= 8) {
             $btcCandles = array_values($btcCandles);
-            $btcCloses = array_map(static fn (Candle $c) => $c->close, $btcCandles);
-            $btcEma8 = SeriesMath::ema($btcCloses, 8);
-            $btcEma21 = SeriesMath::ema($btcCloses, 21);
-            $btcEma50 = SeriesMath::ema($btcCloses, 50);
+            if (in_array($interval, ['4h', '1d'], true)) {
+                $nowSec = \Illuminate\Support\Carbon::now()->timestamp;
+                while ($btcCandles !== [] && intdiv((int) end($btcCandles)->closeTime, 1000) >= $nowSec) {
+                    array_pop($btcCandles);
+                }
+            }
+            if (count($btcCandles) >= 8) {
+                $btcCloses = array_map(static fn (Candle $c) => $c->close, $btcCandles);
+                $btcEma8 = SeriesMath::ema($btcCloses, 8);
+                $btcEma21 = SeriesMath::ema($btcCloses, 21);
+                $btcEma50 = SeriesMath::ema($btcCloses, 50);
+            }
         }
 
         // Вычисляем индикаторы BTC HTF, если свечи переданы
